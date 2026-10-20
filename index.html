@@ -1,0 +1,876 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#03070d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Jarvis">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;500;600&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
+<title>Jarvis</title>
+<style>
+:root{
+  --bg:#03070d; --bg2:#06111c; --panel:rgba(7,19,31,.94); --line:rgba(73,214,255,.22);
+  --cyan:#49d6ff; --cyan-soft:rgba(73,214,255,.14); --text:#d9f4ff; --muted:#7b9fb2;
+  --amber:#ffb547; --red:#ff5d6c; --green:#5dffb0;
+  --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px);
+  --mono:'Orbitron',system-ui,sans-serif; --sans:'Exo 2',system-ui,-apple-system,sans-serif;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:var(--sans);overscroll-behavior:none}
+body{background:radial-gradient(ellipse at 50% 35%,#0a2236 0%,var(--bg2) 38%,var(--bg) 75%) fixed}
+button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer}
+input,textarea,select{font-family:inherit;font-size:16px;color:var(--text)}
+#app{display:flex;flex-direction:column;height:100dvh;max-width:640px;margin:0 auto;padding:calc(var(--safe-t) + 8px) 16px calc(var(--safe-b) + 10px)}
+/* grid de fondo */
+#app::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.35;
+  background-image:linear-gradient(var(--cyan-soft) 1px,transparent 1px),linear-gradient(90deg,var(--cyan-soft) 1px,transparent 1px);
+  background-size:44px 44px;mask-image:radial-gradient(ellipse at 50% 40%,#000 0%,transparent 70%);-webkit-mask-image:radial-gradient(ellipse at 50% 40%,#000 0%,transparent 70%)}
+header{display:flex;align-items:center;justify-content:space-between;gap:8px;position:relative;z-index:2}
+.brand{font-family:var(--mono);font-weight:700;letter-spacing:.32em;font-size:15px;color:var(--cyan);text-shadow:0 0 12px rgba(73,214,255,.6)}
+.brand small{display:block;font-family:var(--sans);letter-spacing:.12em;font-size:11px;color:var(--muted);font-weight:500;text-shadow:none;margin-top:2px}
+.hbtns{display:flex;gap:6px}
+.ibtn{width:42px;height:42px;border:1px solid var(--line);border-radius:12px;display:grid;place-items:center;background:rgba(7,19,31,.6)}
+.ibtn svg{width:20px;height:20px;stroke:var(--cyan);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.ibtn:active{background:var(--cyan-soft)}
+main{flex:1;display:flex;flex-direction:column;align-items:center;min-height:0;position:relative;z-index:1}
+#orbWrap{position:relative;width:min(78vw,340px);aspect-ratio:1;margin-top:clamp(4px,3vh,28px);flex-shrink:0}
+#orb{width:100%;height:100%;display:block}
+#orbWrap button{position:absolute;inset:18%;border-radius:50%}
+#status{font-family:var(--mono);font-size:11px;letter-spacing:.35em;color:var(--cyan);margin-top:4px;opacity:.9}
+#status.thinking{color:var(--amber)} #status.error{color:var(--red)}
+#interim{min-height:22px;color:var(--muted);font-style:italic;text-align:center;margin-top:6px;font-size:16px;padding:0 6px}
+#caption{flex:1;min-height:0;overflow-y:auto;width:100%;margin-top:6px;padding:12px 14px;border-left:2px solid var(--line);font-size:17px;line-height:1.5;font-weight:400;-webkit-overflow-scrolling:touch}
+#caption b{color:#fff;font-weight:600}
+#caption ul{margin:6px 0;padding-left:20px}
+#caption a{color:var(--cyan)}
+.evcards{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+.evcard{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:14px;background:rgba(7,19,31,.6)}
+.evcard .t{flex:1;min-width:0}
+.evcard .t span{display:block;color:var(--muted);font-size:12px}
+.chip{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:6px 10px;color:var(--cyan);white-space:nowrap;text-decoration:none;display:inline-block}
+#quick{display:flex;gap:8px;overflow-x:auto;width:100%;padding:8px 0 2px;scrollbar-width:none}
+#quick::-webkit-scrollbar{display:none}
+#quick .chip{font-size:13px;padding:8px 12px;background:rgba(7,19,31,.7)}
+footer{display:flex;align-items:flex-end;gap:8px;margin-top:8px;position:relative;z-index:2}
+#txt{flex:1;resize:none;max-height:120px;min-height:48px;border:1px solid var(--line);border-radius:14px;background:rgba(7,19,31,.85);padding:12px 14px;line-height:1.35;outline:none}
+#txt:focus{border-color:var(--cyan)}
+#send,#mic{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;flex-shrink:0}
+#send{border:1px solid var(--line);background:rgba(7,19,31,.85)}
+#mic{background:var(--cyan);box-shadow:0 0 18px rgba(73,214,255,.45)}
+#mic.on{background:var(--red);box-shadow:0 0 22px rgba(255,93,108,.6);animation:pulse 1.2s infinite}
+#send svg,#mic svg{width:22px;height:22px;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+#send svg{stroke:var(--cyan)} #mic svg{stroke:#03070d}
+@keyframes pulse{50%{transform:scale(1.06)}}
+/* hojas */
+.sheet{position:fixed;inset:0;z-index:20;display:none;background:rgba(0,0,0,.55)}
+.sheet.open{display:block}
+.sheet .box{position:absolute;left:0;right:0;bottom:0;max-width:640px;margin:0 auto;height:min(88dvh,820px);background:var(--panel);border-top:1px solid var(--cyan);border-radius:18px 18px 0 0;display:flex;flex-direction:column;padding:14px 16px calc(var(--safe-b) + 12px);animation:up .22s ease-out;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+@keyframes up{from{transform:translateY(40px);opacity:0}}
+.shead{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.shead h2{font-family:var(--mono);font-size:14px;letter-spacing:.25em;margin:0;color:var(--cyan);font-weight:500}
+.sbody{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:20px}
+.tabs{display:flex;gap:6px;margin-bottom:12px}
+.tabs button{flex:1;padding:9px 4px;border:1px solid var(--line);border-radius:10px;font-size:14px;color:var(--muted)}
+.tabs button.act{background:var(--cyan-soft);color:var(--cyan);border-color:var(--cyan)}
+.day{font-family:var(--mono);font-size:11px;letter-spacing:.2em;color:var(--muted);margin:16px 0 6px;text-transform:uppercase}
+.item{display:flex;align-items:flex-start;gap:10px;padding:10px;border:1px solid var(--line);border-radius:10px;margin-bottom:6px;background:rgba(3,7,13,.5)}
+.item .time{font-family:var(--mono);font-size:12px;color:var(--cyan);min-width:46px;padding-top:2px}
+.item .body{flex:1;min-width:0;font-size:15px}
+.item .body small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+.item.done .body{text-decoration:line-through;opacity:.5}
+.item .acts{display:flex;gap:4px}
+.mini{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;border:1px solid var(--line);text-decoration:none}
+.mini svg{width:16px;height:16px;stroke:var(--muted);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.badge{font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:2px 6px;border-radius:5px;margin-left:6px;border:1px solid currentColor;vertical-align:1px}
+.b-clase{color:#7fb2ff}.b-estudio{color:var(--cyan)}.b-evaluacion{color:var(--red)}.b-entrega{color:var(--amber)}.b-personal{color:var(--green)}.b-otro{color:var(--muted)}
+.check{width:24px;height:24px;border:1.5px solid var(--cyan);border-radius:7px;flex-shrink:0;display:grid;place-items:center}
+.done .check{background:var(--cyan)}
+.empty{color:var(--muted);text-align:center;padding:30px 10px;font-size:15px;line-height:1.5}
+.row{display:flex;gap:8px;margin:8px 0}
+.btn{padding:11px 14px;border:1px solid var(--cyan);border-radius:11px;color:var(--cyan);font-size:15px;text-align:center}
+.btn.solid{background:var(--cyan);color:#03070d;font-weight:600}
+.btn.danger{border-color:var(--red);color:var(--red)}
+.btn.grow{flex:1}
+label.f{display:block;margin:14px 0 4px;font-size:13px;color:var(--muted);letter-spacing:.04em}
+.in{width:100%;padding:11px 12px;border-radius:11px;border:1px solid var(--line);background:rgba(3,7,13,.6);outline:none}
+.in:focus{border-color:var(--cyan)}
+.sw{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);font-size:15px}
+.sw small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+.sw input{width:22px;height:22px;accent-color:var(--cyan);flex-shrink:0}
+.sec{font-family:var(--mono);font-size:11px;letter-spacing:.25em;color:var(--cyan);margin:26px 0 4px}
+.note{font-size:13px;color:var(--muted);line-height:1.5;margin:6px 0}
+.note a{color:var(--cyan)}
+.bubble{padding:10px 12px;border-radius:12px;margin:8px 0;font-size:15px;line-height:1.45;max-width:88%}
+.bubble.u{margin-left:auto;background:var(--cyan-soft);border:1px solid var(--line)}
+.bubble.a{border-left:2px solid var(--cyan);background:rgba(3,7,13,.5)}
+.bubble .meta{font-size:11px;color:var(--muted);margin-top:4px}
+#toast{position:fixed;left:50%;top:calc(var(--safe-t) + 64px);transform:translateX(-50%);background:#0b2133;border:1px solid var(--cyan);padding:10px 16px;border-radius:12px;font-size:14px;z-index:50;max-width:88vw;text-align:center;opacity:0;pointer-events:none;transition:opacity .25s}
+#toast.show{opacity:1}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand" id="brand">J·A·R·V·I·S<small id="clock">—</small></div>
+    <div class="hbtns">
+      <button class="ibtn" data-open="datos" aria-label="Agenda, tareas y memoria"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></button>
+      <button class="ibtn" data-open="chat" aria-label="Conversación"><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg></button>
+      <button class="ibtn" data-open="ajustes" aria-label="Ajustes"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+    </div>
+  </header>
+
+  <main>
+    <div id="orbWrap"><canvas id="orb"></canvas><button id="orbBtn" aria-label="Hablar"></button></div>
+    <div id="status">EN ESPERA</div>
+    <div id="interim"></div>
+    <div id="caption"></div>
+    <div id="quick">
+      <button class="chip" data-q="Dame mi resumen de hoy: qué tengo, qué se viene y qué me recomiendas priorizar.">Resumen de hoy</button>
+      <button class="chip" data-q="¿Qué tengo esta semana?">Mi semana</button>
+      <button class="chip" data-q="Revisa mis evaluaciones y entregas próximas y planifícame bloques de estudio para los próximos días, sin chocar con lo que ya tengo.">Planificar estudio</button>
+      <button class="chip" data-q="¿Qué tareas tengo pendientes?">Pendientes</button>
+    </div>
+  </main>
+
+  <footer>
+    <textarea id="txt" rows="1" placeholder="Escribe o habla…" enterkeyhint="send"></textarea>
+    <button id="send" aria-label="Enviar"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+    <button id="mic" aria-label="Hablar"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+  </footer>
+</div>
+
+<!-- AGENDA / TAREAS / MEMORIA -->
+<div class="sheet" id="sh-datos"><div class="box">
+  <div class="shead"><h2>REGISTROS</h2><button class="ibtn" data-close><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <div class="tabs"><button data-tab="agenda" class="act">Agenda</button><button data-tab="tareas">Tareas</button><button data-tab="memoria">Memoria</button></div>
+  <div class="sbody">
+    <div id="tab-agenda"></div>
+    <div id="tab-tareas" class="hidden"></div>
+    <div id="tab-memoria" class="hidden"></div>
+  </div>
+</div></div>
+
+<!-- CONVERSACIÓN -->
+<div class="sheet" id="sh-chat"><div class="box">
+  <div class="shead"><h2>CONVERSACIÓN</h2><button class="ibtn" data-close><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <div class="sbody" id="chatLog"></div>
+  <div class="row"><button class="btn danger grow" id="clearChat">Empezar conversación nueva</button></div>
+</div></div>
+
+<!-- AJUSTES -->
+<div class="sheet" id="sh-ajustes"><div class="box">
+  <div class="shead"><h2>AJUSTES</h2><button class="ibtn" data-close><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <div class="sbody">
+    <div id="welcome" class="note hidden" style="font-size:15px;color:var(--text)">Bienvenido. Para activar a tu asistente necesito dos cosas: tu nombre y tu clave de API de Claude. Ambas quedan guardadas solo en este teléfono.</div>
+
+    <div class="sec">IDENTIDAD</div>
+    <label class="f" for="sName">Tu nombre (cómo te llamará)</label>
+    <input class="in" id="sName" autocomplete="given-name">
+    <label class="f" for="sAsst">Nombre del asistente</label>
+    <input class="in" id="sAsst" placeholder="Jarvis">
+
+    <div class="sec">CEREBRO</div>
+    <label class="f" for="sKey">Clave de API de Claude</label>
+    <div class="row" style="margin:0"><input class="in" id="sKey" type="password" placeholder="sk-ant-…" autocomplete="off" autocapitalize="off" spellcheck="false"><button class="btn" id="showKey">Ver</button></div>
+    <p class="note">La consigues en <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a> → API Keys → Create Key. Se guarda solo en este teléfono y se usa únicamente para hablar con Claude.</p>
+    <label class="f" for="sModel">Modelo</label>
+    <select class="in" id="sModel">
+      <option value="claude-haiku-5-5">Claude Haiku 5.5 — rápido y muy barato (recomendado)</option>
+      <option value="claude-sonnet-5-5">Claude Sonnet 5.5 — más inteligente, cuesta más</option>
+    </select>
+    <div class="row"><button class="btn grow" id="testKey">Probar conexión</button></div>
+
+    <div class="sec">VOZ</div>
+    <div class="sw"><div>Responder en voz alta</div><input type="checkbox" id="sVoiceOn"></div>
+    <div class="sw"><div>Conversación continua<small>Después de responder, vuelve a escucharte solo.</small></div><input type="checkbox" id="sAuto"></div>
+    <label class="f" for="sVoice">Voz</label>
+    <select class="in" id="sVoice"></select>
+    <label class="f" for="sRate">Velocidad: <span id="rateVal">1.0</span></label>
+    <input type="range" id="sRate" min="0.7" max="1.4" step="0.05" style="width:100%;accent-color:var(--cyan)">
+    <div class="row"><button class="btn grow" id="testVoice">Probar voz</button></div>
+
+    <div class="sec">AULA (MOODLE)</div>
+    <p class="note">En el Aula: Calendario → Importar o exportar calendarios → Exportar calendario → Todos los cursos → Obtener URL. Pega ese enlace aquí.</p>
+    <input class="in" id="sAula" placeholder="https://aula.usm.cl/calendar/export_execute.php?…" autocapitalize="off" spellcheck="false">
+    <div class="row"><button class="btn grow" id="syncAula">Sincronizar con el enlace</button></div>
+    <p class="note">Si el Aula no deja que la app lea el enlace directamente, descarga el archivo .ics en el Aula (botón "Exportar") e impórtalo aquí:</p>
+    <div class="row"><label class="btn grow">Importar archivo .ics<input type="file" id="icsFile" accept=".ics,text/calendar" class="hidden"></label></div>
+    <p class="note" id="aulaInfo"></p>
+
+    <div class="sec">EXTRAS</div>
+    <div class="sw"><div>Búsqueda en internet<small>Permite preguntar por noticias, clima, etc. Cuesta aprox. 1 centavo de dólar por búsqueda.</small></div><input type="checkbox" id="sWeb"></div>
+
+    <div class="sec">GASTO</div>
+    <p class="note" id="usageInfo"></p>
+    <div class="row"><button class="btn grow" id="resetUsage">Reiniciar contador</button></div>
+
+    <div class="sec">RESPALDO</div>
+    <p class="note">Todo vive en este teléfono. Haz un respaldo de vez en cuando por si borras los datos del navegador.</p>
+    <div class="row"><button class="btn grow" id="exportAll">Descargar respaldo</button><label class="btn grow">Restaurar<input type="file" id="importAll" accept=".json,application/json" class="hidden"></label></div>
+    <div class="row"><button class="btn danger grow" id="wipe">Borrar todos los datos</button></div>
+
+    <div class="row" style="margin-top:22px"><button class="btn solid grow" id="saveSettings">Guardar</button></div>
+  </div>
+</div></div>
+
+<div id="toast"></div>
+
+<script>
+'use strict';
+/* =========================================================
+   1. ALMACENAMIENTO (todo queda en el teléfono)
+   ========================================================= */
+const KEY = 'jarvis.v1';
+const DEFAULTS = () => ({
+  settings:{ apiKey:'', name:'', asst:'Jarvis', model:'claude-haiku-5-5', voiceOn:true, autoListen:false, voiceURI:'', rate:1.0, webSearch:false },
+  events:[], tasks:[], memory:[], history:[], log:[],
+  usage:{ inTok:0, outTok:0, cost:0, searches:0, since:new Date().toISOString() },
+  aula:{ url:'', lastSync:null, count:0 }
+});
+let S = load();
+function load(){
+  try{
+    const raw = localStorage.getItem(KEY);
+    if(!raw) return DEFAULTS();
+    const d = JSON.parse(raw), base = DEFAULTS();
+    return { ...base, ...d, settings:{...base.settings, ...(d.settings||{})}, usage:{...base.usage, ...(d.usage||{})}, aula:{...base.aula, ...(d.aula||{})} };
+  }catch(e){ return DEFAULTS(); }
+}
+function save(){ try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){ toast('No pude guardar los datos en el teléfono.'); } }
+const uid = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+
+/* =========================================================
+   2. UTILIDADES DE FECHA Y TEXTO
+   ========================================================= */
+const pad = n => String(n).padStart(2,'0');
+const fmtLocal = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const fmtDay = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+function parseLocal(s){ if(!s) return null; if(/^\d{4}-\d{2}-\d{2}$/.test(s)) s += 'T00:00'; const d = new Date(s); return isNaN(d) ? null : d; }
+const hhmm = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const dayLabel = d => d.toLocaleDateString('es-CL',{weekday:'long', day:'numeric', month:'long'});
+const shortDay = d => d.toLocaleDateString('es-CL',{weekday:'short', day:'2-digit', month:'2-digit'});
+const esc = s => String(s??'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function md(s){
+  // markdown mínimo: negritas, listas, saltos de línea
+  const lines = esc(s).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').split('\n');
+  let out = '', inList = false;
+  for(const l of lines){
+    const m = l.match(/^\s*(?:[-•*]|\d+[.)])\s+(.*)/);
+    if(m){ if(!inList){ out += '<ul>'; inList = true; } out += `<li>${m[1]}</li>`; }
+    else { if(inList){ out += '</ul>'; inList = false; } out += l.replace(/^#+\s*/,'') + '<br>'; }
+  }
+  if(inList) out += '</ul>';
+  return out.replace(/(<br>)+$/,'');
+}
+const plain = s => String(s).replace(/\*\*|__|`|#+\s/g,'').replace(/^\s*[-•*]\s+/gm,'').replace(/https?:\/\/\S+/g,'el enlace').trim();
+const greeting = () => { const h = new Date().getHours(); return h < 12 ? 'Buenos días' : h < 20 ? 'Buenas tardes' : 'Buenas noches'; };
+
+/* =========================================================
+   3. INTERFAZ: ESTADO, TOAST, RELOJ
+   ========================================================= */
+const $ = s => document.querySelector(s);
+let state = 'idle';
+const STATUS = { idle:'EN ESPERA', listening:'ESCUCHANDO', thinking:'PROCESANDO', speaking:'HABLANDO', error:'ERROR' };
+function setState(s){ state = s; const el = $('#status'); el.textContent = STATUS[s]; el.className = s; $('#mic').classList.toggle('on', s === 'listening'); }
+let toastT;
+function toast(msg, ms=3200){ const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(()=>t.classList.remove('show'), ms); }
+function tickClock(){ const d = new Date(); $('#clock').textContent = d.toLocaleDateString('es-CL',{weekday:'short', day:'numeric', month:'short'}).toUpperCase() + ' · ' + hhmm(d); }
+setInterval(tickClock, 15000); tickClock();
+function showCaption(html){ const c = $('#caption'); c.innerHTML = html; c.scrollTop = 0; }
+
+/* =========================================================
+   4. EL ORBE (animación tipo HUD)
+   ========================================================= */
+const cv = $('#orb'), ctx = cv.getContext('2d');
+let level = 0, target = 0, rot = 0, pulseT = 0;
+function sizeCanvas(){ const r = cv.getBoundingClientRect(), dpr = Math.min(window.devicePixelRatio||1, 3); cv.width = r.width*dpr; cv.height = r.height*dpr; ctx.setTransform(dpr,0,0,dpr,0,0); }
+window.addEventListener('resize', sizeCanvas);
+function bump(v=1){ pulseT = Math.max(pulseT, v); }
+function draw(t){
+  const w = cv.clientWidth, h = cv.clientHeight, cx = w/2, cy = h/2, R = Math.min(w,h)/2;
+  ctx.clearRect(0,0,w,h);
+  const col = state === 'thinking' ? [255,181,71] : state === 'error' ? [255,93,108] : [73,214,255];
+  const C = a => `rgba(${col[0]},${col[1]},${col[2]},${a})`;
+  // objetivo de "energía" según el estado
+  const breathe = (Math.sin(t/900)+1)/2;
+  target = state === 'idle' ? .12 + breathe*.08 : state === 'listening' ? .35 + pulseT*.5 : state === 'thinking' ? .45 + breathe*.2 : state === 'speaking' ? .3 + pulseT*.7 : .3;
+  pulseT *= .9; if(state === 'speaking' && Math.random() < .12) bump(.4 + Math.random()*.6);
+  level += (target - level) * .12;
+  rot += state === 'thinking' ? .035 : state === 'idle' ? .004 : .012;
+  // halo
+  const g = ctx.createRadialGradient(cx,cy,R*.05,cx,cy,R*(.55+level*.25));
+  g.addColorStop(0, C(.9)); g.addColorStop(.25, C(.35+level*.3)); g.addColorStop(.6, C(.06)); g.addColorStop(1, C(0));
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx,cy,R,0,Math.PI*2); ctx.fill();
+  ctx.lineCap = 'round';
+  // anillos punteados giratorios
+  const rings = [[.92,1,[2,10],1],[.82,-1.6,[R*.35,R*.12],2.2],[.70,2.2,[1,6],1.2],[.60,-1.1,[R*.2,R*.05],3]];
+  rings.forEach(([rr,sp,dash,lw],i)=>{
+    ctx.save(); ctx.translate(cx,cy); ctx.rotate(rot*sp + i);
+    ctx.setLineDash(dash); ctx.strokeStyle = C(.35 + level*.5 - i*.04); ctx.lineWidth = lw;
+    ctx.beginPath(); ctx.arc(0,0,R*rr*(1+level*.04),0,Math.PI*2); ctx.stroke(); ctx.restore();
+  });
+  ctx.setLineDash([]);
+  // marcas tipo dial
+  ctx.save(); ctx.translate(cx,cy); ctx.rotate(-rot*.5);
+  for(let i=0;i<72;i++){ const a = i/72*Math.PI*2, long = i%6===0, r1 = R*.975, r2 = R*(long?.93:.955);
+    ctx.strokeStyle = C(long?.6:.25); ctx.lineWidth = long?1.6:1; ctx.beginPath(); ctx.moveTo(Math.cos(a)*r1,Math.sin(a)*r1); ctx.lineTo(Math.cos(a)*r2,Math.sin(a)*r2); ctx.stroke(); }
+  ctx.restore();
+  // arcos de energía (reaccionan a la voz)
+  for(let k=0;k<3;k++){
+    const a0 = rot*(k%2?-3:3) + k*2.1, len = .5 + level*1.4;
+    ctx.strokeStyle = C(.75); ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(cx,cy,R*(.5+k*.035),a0,a0+len); ctx.stroke();
+  }
+  // núcleo
+  const core = R*(.16 + level*.1);
+  const g2 = ctx.createRadialGradient(cx,cy,0,cx,cy,core*1.6);
+  g2.addColorStop(0,'rgba(255,255,255,.95)'); g2.addColorStop(.35, C(.9)); g2.addColorStop(1, C(0));
+  ctx.fillStyle = g2; ctx.beginPath(); ctx.arc(cx,cy,core*1.6,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle = C(.9); ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(cx,cy,core*1.9,0,Math.PI*2); ctx.stroke();
+  // triángulo interior (segmentos)
+  ctx.save(); ctx.translate(cx,cy); ctx.rotate(rot*.8);
+  for(let i=0;i<3;i++){ const a = i/3*Math.PI*2; ctx.fillStyle = C(.18+level*.3);
+    ctx.beginPath(); ctx.arc(0,0,R*.4,a+.15,a+Math.PI*2/3-.15); ctx.arc(0,0,R*.31,a+Math.PI*2/3-.2,a+.2,true); ctx.closePath(); ctx.fill(); }
+  ctx.restore();
+  requestAnimationFrame(draw);
+}
+
+/* =========================================================
+   5. VOZ: HABLAR (síntesis) Y ESCUCHAR (reconocimiento)
+   ========================================================= */
+const synth = window.speechSynthesis;
+let voices = [];
+function loadVoices(){
+  if(!synth) return;
+  voices = synth.getVoices().filter(v => /^es/i.test(v.lang));
+  const sel = $('#sVoice'); sel.innerHTML = '';
+  if(!voices.length){ sel.innerHTML = '<option value="">Voz del sistema</option>'; return; }
+  voices.forEach(v => { const o = document.createElement('option'); o.value = v.voiceURI; o.textContent = `${v.name} (${v.lang})`; sel.appendChild(o); });
+  if(!S.settings.voiceURI){ // elige una voz masculina en español si existe
+    const pref = voices.find(v => /jorge|juan|diego|andr|pablo|carlos/i.test(v.name)) || voices.find(v => /es-(MX|US|CL|419)/i.test(v.lang)) || voices[0];
+    S.settings.voiceURI = pref.voiceURI; save();
+  }
+  sel.value = S.settings.voiceURI;
+}
+if(synth){ loadVoices(); synth.onvoiceschanged = loadVoices; }
+let unlocked = false;
+function unlockAudio(){ if(unlocked || !synth) return; try{ const u = new SpeechSynthesisUtterance(' '); u.volume = 0; synth.speak(u); unlocked = true; }catch(e){} }
+
+function speak(text){
+  return new Promise(resolve => {
+    if(!synth || !S.settings.voiceOn || !text){ resolve(); return; }
+    synth.cancel();
+    const clean = plain(text);
+    // Se divide en frases cortas: iOS a veces corta los textos largos.
+    const parts = clean.match(/[^.!?¿¡\n]+[.!?]*|[\n]+/g)?.map(s=>s.trim()).filter(Boolean) || [clean];
+    const chunks = []; let cur = '';
+    for(const p of parts){ if((cur + ' ' + p).length > 180 && cur){ chunks.push(cur); cur = p; } else cur = (cur ? cur + ' ' : '') + p; }
+    if(cur) chunks.push(cur);
+    const voice = synth.getVoices().find(v => v.voiceURI === S.settings.voiceURI);
+    setState('speaking');
+    let i = 0;
+    const next = () => {
+      if(i >= chunks.length || state !== 'speaking'){ if(state === 'speaking') setState('idle'); resolve(); return; }
+      const u = new SpeechSynthesisUtterance(chunks[i++]);
+      if(voice){ u.voice = voice; u.lang = voice.lang; } else u.lang = 'es-CL';
+      u.rate = S.settings.rate; u.pitch = .95;
+      u.onboundary = () => bump(.6 + Math.random()*.4);
+      u.onend = next; u.onerror = next;
+      synth.speak(u);
+    };
+    next();
+  });
+}
+function stopSpeaking(){ if(synth) synth.cancel(); if(state === 'speaking') setState('idle'); }
+
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, recTimer = null;
+function startListening(){
+  unlockAudio(); stopSpeaking();
+  if(!SR){ toast('Este navegador no permite dictado aquí. Usa el micrófono del teclado del iPhone.', 5000); $('#txt').focus(); return; }
+  if(busy) return;
+  if(rec){ rec.stop(); return; }
+  let finalText = '', lastInterim = '';
+  try{ rec = new SR(); }catch(e){ toast('No pude activar el micrófono.'); return; }
+  rec.lang = 'es-CL'; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
+  rec.onstart = () => { setState('listening'); $('#interim').textContent = '…'; };
+  rec.onresult = e => {
+    let interim = '';
+    for(let i = e.resultIndex; i < e.results.length; i++){ const t = e.results[i][0].transcript; if(e.results[i].isFinal) finalText += t; else interim += t; }
+    lastInterim = (finalText + interim).trim(); $('#interim').textContent = lastInterim; bump(.8);
+  };
+  rec.onerror = e => {
+    if(e.error === 'not-allowed' || e.error === 'service-not-allowed') toast('Necesito permiso para usar el micrófono (Ajustes del iPhone → Safari → Micrófono).', 6000);
+    else if(e.error === 'no-speech') toast('No te escuché. Inténtalo de nuevo.');
+    else if(e.error !== 'aborted') toast('Problema con el micrófono: ' + e.error);
+  };
+  rec.onend = () => {
+    clearTimeout(recTimer); rec = null; $('#interim').textContent = '';
+    if(state === 'listening') setState('idle');
+    const text = (finalText.trim() || lastInterim).trim();
+    if(text) send(text);
+  };
+  recTimer = setTimeout(() => rec && rec.stop(), 20000);
+  try{ rec.start(); }catch(e){ rec = null; toast('No pude empezar a escuchar.'); }
+}
+
+/* =========================================================
+   6. HERRAMIENTAS QUE CLAUDE PUEDE USAR (las "manos")
+   ========================================================= */
+const TIPOS = ['clase','estudio','evaluacion','entrega','personal','otro'];
+const TOOLS = [
+  { name:'agenda_agregar', description:'Agrega un evento a la agenda del usuario (clase, bloque de estudio, evaluación, entrega, compromiso personal). Para clases u otras cosas que se repiten cada semana, usa repetir_semanal_hasta. Devuelve los ids creados y avisa si choca con otros eventos.',
+    input_schema:{ type:'object', properties:{
+      titulo:{type:'string'}, inicio:{type:'string', description:'Fecha y hora local, formato YYYY-MM-DDTHH:MM'},
+      fin:{type:'string', description:'Fecha y hora local de término, formato YYYY-MM-DDTHH:MM. Si no se sabe, omitir (dura 1 hora).'},
+      tipo:{type:'string', enum:TIPOS}, notas:{type:'string'},
+      repetir_semanal_hasta:{type:'string', description:'Opcional. Fecha YYYY-MM-DD hasta la que se repite cada semana.'} },
+      required:['titulo','inicio','tipo'] } },
+  { name:'agenda_listar', description:'Lista los eventos de la agenda entre dos fechas (incluye los importados del Aula). Úsala para fechas fuera de los 14 días que ya ves en el contexto.',
+    input_schema:{ type:'object', properties:{ desde:{type:'string', description:'YYYY-MM-DD'}, hasta:{type:'string', description:'YYYY-MM-DD'} }, required:['desde','hasta'] } },
+  { name:'agenda_modificar', description:'Cambia uno o más campos de un evento existente, identificado por su id.',
+    input_schema:{ type:'object', properties:{ id:{type:'string'}, titulo:{type:'string'}, inicio:{type:'string'}, fin:{type:'string'}, tipo:{type:'string', enum:TIPOS}, notas:{type:'string'} }, required:['id'] } },
+  { name:'agenda_eliminar', description:'Elimina eventos de la agenda por id.',
+    input_schema:{ type:'object', properties:{ ids:{type:'array', items:{type:'string'}} }, required:['ids'] } },
+  { name:'tarea_agregar', description:'Agrega una tarea o pendiente a la lista de tareas.',
+    input_schema:{ type:'object', properties:{ titulo:{type:'string'}, fecha_limite:{type:'string', description:'Opcional, YYYY-MM-DD o YYYY-MM-DDTHH:MM'}, prioridad:{type:'string', enum:['alta','media','baja']}, notas:{type:'string'} }, required:['titulo'] } },
+  { name:'tarea_completar', description:'Marca una tarea como completada (o la desmarca con completada=false).',
+    input_schema:{ type:'object', properties:{ id:{type:'string'}, completada:{type:'boolean'} }, required:['id'] } },
+  { name:'tarea_eliminar', description:'Elimina una tarea por id.',
+    input_schema:{ type:'object', properties:{ id:{type:'string'} }, required:['id'] } },
+  { name:'memoria_guardar', description:'Guarda un dato duradero sobre el usuario para recordarlo en futuras conversaciones (horario, ramos, gustos, metas, personas importantes, preferencias sobre cómo ayudarle). Un dato por llamada, en una frase corta.',
+    input_schema:{ type:'object', properties:{ dato:{type:'string'} }, required:['dato'] } },
+  { name:'memoria_olvidar', description:'Borra un dato de la memoria por id (cuando el usuario lo pide o cuando quedó obsoleto).',
+    input_schema:{ type:'object', properties:{ id:{type:'string'} }, required:['id'] } }
+];
+const evOut = e => ({ id:e.id, titulo:e.titulo, inicio:e.inicio, fin:e.fin, tipo:e.tipo, notas:e.notas||undefined, origen:e.origen||'jarvis' });
+function sortEvents(){ S.events.sort((a,b) => a.inicio.localeCompare(b.inicio)); }
+function overlaps(ini, fin, skipId){
+  const a = parseLocal(ini), b = parseLocal(fin);
+  return S.events.filter(e => e.id !== skipId && parseLocal(e.inicio) < b && parseLocal(e.fin) > a).map(e => `${e.titulo} (${e.inicio.slice(11)}–${e.fin.slice(11)})`);
+}
+let turnEvents = []; // eventos creados en esta respuesta, para mostrar botones
+function runTool(name, x){
+  switch(name){
+    case 'agenda_agregar':{
+      const ini = parseLocal(x.inicio); if(!ini) return { error:'Fecha de inicio inválida. Usa YYYY-MM-DDTHH:MM.' };
+      let fin = parseLocal(x.fin); if(!fin || fin <= ini) fin = new Date(ini.getTime() + 3600e3);
+      const dur = fin - ini, until = x.repetir_semanal_hasta ? parseLocal(x.repetir_semanal_hasta + 'T23:59') : null;
+      const ids = [], choques = [];
+      for(let k = 0, d = new Date(ini); k < 40; k++, d = new Date(d.getTime() + 7*864e5)){
+        if(k > 0 && (!until || d > until)) break;
+        const e = { id:uid('e'), titulo:x.titulo, inicio:fmtLocal(d), fin:fmtLocal(new Date(d.getTime()+dur)), tipo:TIPOS.includes(x.tipo)?x.tipo:'otro', notas:x.notas||'', origen:'jarvis' };
+        choques.push(...overlaps(e.inicio, e.fin));
+        S.events.push(e); ids.push(e.id); if(k === 0) turnEvents.push(e);
+      }
+      sortEvents(); save(); renderAgenda();
+      return { ok:true, creados:ids.length, ids, choques:[...new Set(choques)].slice(0,6) };
+    }
+    case 'agenda_listar':{
+      const a = parseLocal(x.desde), b = parseLocal(x.hasta + 'T23:59');
+      if(!a || !b) return { error:'Fechas inválidas.' };
+      const r = S.events.filter(e => { const d = parseLocal(e.inicio); return d >= a && d <= b; }).map(evOut);
+      return { total:r.length, eventos:r.slice(0,120) };
+    }
+    case 'agenda_modificar':{
+      const e = S.events.find(e => e.id === x.id); if(!e) return { error:'No existe un evento con ese id.' };
+      const oldDur = parseLocal(e.fin) - parseLocal(e.inicio);
+      for(const k of ['titulo','notas']) if(x[k] !== undefined) e[k] = x[k];
+      if(x.tipo && TIPOS.includes(x.tipo)) e.tipo = x.tipo;
+      if(x.inicio && parseLocal(x.inicio)){ e.inicio = fmtLocal(parseLocal(x.inicio)); if(!x.fin) e.fin = fmtLocal(new Date(parseLocal(e.inicio).getTime() + oldDur)); }
+      if(x.fin && parseLocal(x.fin)) e.fin = fmtLocal(parseLocal(x.fin));
+      sortEvents(); save(); renderAgenda(); turnEvents.push(e);
+      return { ok:true, evento:evOut(e), choques:overlaps(e.inicio, e.fin, e.id) };
+    }
+    case 'agenda_eliminar':{
+      const before = S.events.length; S.events = S.events.filter(e => !(x.ids||[]).includes(e.id));
+      save(); renderAgenda(); return { ok:true, eliminados: before - S.events.length };
+    }
+    case 'tarea_agregar':{
+      const t = { id:uid('t'), titulo:x.titulo, fecha:x.fecha_limite||'', prioridad:x.prioridad||'media', notas:x.notas||'', hecha:false, creada:fmtLocal(new Date()) };
+      S.tasks.push(t); save(); renderTasks(); return { ok:true, id:t.id };
+    }
+    case 'tarea_completar':{
+      const t = S.tasks.find(t => t.id === x.id); if(!t) return { error:'No existe esa tarea.' };
+      t.hecha = x.completada !== false; save(); renderTasks(); return { ok:true };
+    }
+    case 'tarea_eliminar':{
+      const n = S.tasks.length; S.tasks = S.tasks.filter(t => t.id !== x.id); save(); renderTasks(); return { ok: S.tasks.length < n };
+    }
+    case 'memoria_guardar':{
+      const m = { id:uid('m'), dato:String(x.dato).slice(0,400), fecha:fmtDay(new Date()) };
+      S.memory.push(m); save(); renderMemory(); return { ok:true, id:m.id };
+    }
+    case 'memoria_olvidar':{
+      const n = S.memory.length; S.memory = S.memory.filter(m => m.id !== x.id); save(); renderMemory(); return { ok: S.memory.length < n };
+    }
+  }
+  return { error:'Herramienta desconocida.' };
+}
+
+/* =========================================================
+   7. EL CEREBRO: conversación con Claude
+   ========================================================= */
+function buildSystem(){
+  const now = new Date(), tz = Intl.DateTimeFormat().resolvedOptions().timeZone, st = S.settings;
+  const in14 = new Date(now.getTime() + 14*864e5), from = new Date(now.getTime() - 12*3600e3);
+  const ev = S.events.filter(e => { const d = parseLocal(e.inicio); return d >= from && d <= in14; }).slice(0,90)
+    .map(e => `- [${e.id}] ${shortDay(parseLocal(e.inicio))} ${e.inicio.slice(11)}–${e.fin.slice(11)} · ${e.titulo} (${e.tipo}${e.origen==='aula'?', Aula':''})`).join('\n') || '(sin eventos)';
+  const tk = S.tasks.filter(t => !t.hecha).map(t => `- [${t.id}] ${t.titulo}${t.fecha?' · límite '+t.fecha:''} · prioridad ${t.prioridad}`).join('\n') || '(sin tareas pendientes)';
+  const mem = S.memory.map(m => `- [${m.id}] ${m.dato}`).join('\n') || '(todavía no sabes nada guardado sobre el usuario)';
+  return `Eres ${st.asst||'Jarvis'}, el asistente personal de ${st.name||'el usuario'}. Le ayudas con todo: estudios (es estudiante universitario), horario, tareas, recordatorios, planificación, ideas, redacción de mensajes, dudas y su vida personal en general.
+
+PERSONALIDAD: sereno, eficiente y leal, con un humor seco y elegante muy ocasional. Hablas español natural (puedes usar expresiones chilenas suaves), con respeto pero cercano. Llámalo por su nombre de vez en cuando.
+
+FORMA DE RESPONDER: tus respuestas se leen en voz alta. Sé breve: normalmente 1 a 3 frases. Si pide detalle, una lista corta. Sin tablas, sin emojis, sin encabezados. No leas ids en voz alta.
+
+HERRAMIENTAS: tienes agenda, tareas y memoria. Úsalas en vez de solo describir lo que harías, y confirma en una frase lo que hiciste. Cuando el usuario mencione un dato duradero sobre él (horario de clases, ramos, gustos, metas, personas importantes, cómo prefiere que lo ayudes), guárdalo con memoria_guardar sin preguntar. No inventes eventos ni fechas: si falta un dato importante (por ejemplo la hora), pregunta. Si una herramienta avisa choques de horario, menciónalo.
+
+PLANIFICAR ESTUDIO: prioriza evaluaciones y entregas próximas; bloques de 45 a 90 minutos con descansos; no más de 3 o 4 horas de estudio extra al día salvo que lo pida; no pongas bloques que choquen con clases u otros eventos, ni muy tarde en la noche; reparte el estudio en varios días antes de cada evaluación. Crea los bloques con tipo "estudio".
+
+LÍMITES: no puedes enviar correos ni mensajes, llamar, ni abrir otras apps; tampoco puedes avisarle a una hora exacta si la app está cerrada (los recordatorios se ven al abrir la app o pasándolos al calendario del teléfono con el botón que aparece bajo cada evento).${st.webSearch ? ' Puedes buscar en internet cuando haga falta información actual.' : ' No tienes acceso a internet; si te piden algo actual (noticias, clima), dilo y sugiere activar "Búsqueda en internet" en Ajustes.'} Si algo está fuera de tu alcance, dilo y ofrece la mejor alternativa.
+
+AHORA: ${now.toLocaleString('es-CL',{dateStyle:'full', timeStyle:'short'})} (zona horaria ${tz}). Usa este formato para fechas en herramientas: YYYY-MM-DDTHH:MM, hora local.
+
+LO QUE SABES DEL USUARIO (memoria):
+${mem}
+
+AGENDA (desde hoy, próximos 14 días):
+${ev}
+
+TAREAS PENDIENTES:
+${tk}`;
+}
+
+const PRICES = { 'claude-haiku-5-5':[0.10,0.50] }; // USD por millón de tokens (entrada, salida), prompts < 100k tokens
+async function callClaude(body){
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method:'POST',
+    headers:{ 'content-type':'application/json', 'x-api-key':S.settings.apiKey, 'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true' },
+    body:JSON.stringify(body)
+  });
+  const data = await res.json().catch(() => ({}));
+  if(!res.ok){
+    const msg = data?.error?.message || ('HTTP ' + res.status);
+    const err = new Error(msg); err.status = res.status; throw err;
+  }
+  const u = data.usage || {}, inT = (u.input_tokens||0) + (u.cache_read_input_tokens||0) + (u.cache_creation_input_tokens||0), outT = u.output_tokens||0;
+  S.usage.inTok += inT; S.usage.outTok += outT;
+  const p = PRICES[body.model]; if(p) S.usage.cost += inT*p[0]/1e6 + outT*p[1]/1e6;
+  const srch = u.server_tool_use?.web_search_requests || 0; S.usage.searches += srch; S.usage.cost += srch*0.01;
+  save();
+  return data;
+}
+function friendlyError(e){
+  const m = (e.message||'').toLowerCase();
+  if(e.status === 401 || m.includes('api key') || m.includes('x-api-key')) return 'La clave de API no es válida. Revísala en Ajustes.';
+  if(m.includes('credit') || m.includes('balance') || m.includes('billing')) return 'Tu cuenta de Claude no tiene saldo. Carga crédito en console.anthropic.com (Billing).';
+  if(e.status === 429) return 'Demasiadas solicitudes seguidas. Espera un momento y vuelve a intentarlo.';
+  if(e.status === 529 || e.status >= 500) return 'Los servidores de Claude están ocupados. Intenta de nuevo en un minuto.';
+  if(e instanceof TypeError) return 'No pude conectarme. Revisa tu conexión a internet.';
+  return 'Error: ' + e.message;
+}
+
+let busy = false, useEffort = true;
+async function send(text){
+  text = (text||'').trim(); if(!text || busy) return;
+  unlockAudio(); stopSpeaking();
+  if(!S.settings.apiKey){ openSheet('ajustes'); toast('Primero pega tu clave de API.'); return; }
+  busy = true; setState('thinking'); turnEvents = [];
+  $('#txt').value = ''; autosize();
+  showCaption(`<span style="color:var(--muted)">› ${esc(text)}</span>`);
+  logMsg('u', text);
+
+  // Historial: solo texto de turnos anteriores (las herramientas ya quedaron reflejadas en la agenda).
+  const msgs = S.history.map(h => ({ role:h.role, content:h.content }));
+  msgs.push({ role:'user', content:text });
+  const system = buildSystem(); // fijo durante todo este turno
+  const tools = S.settings.webSearch ? [...TOOLS, { type:'web_search_20250305', name:'web_search', max_uses:3 }] : TOOLS;
+  let finalText = '', allText = [];
+  try{
+    for(let step = 0; step < 10; step++){
+      const body = { model:S.settings.model, max_tokens:4000, system, tools, messages:msgs };
+      if(useEffort) body.output_config = { effort:'low' };
+      let data;
+      try{ data = await callClaude(body); }
+      catch(e){
+        if(e.status === 400 && useEffort && /output_config|effort/i.test(e.message)){ useEffort = false; step--; continue; }
+        throw e;
+      }
+      msgs.push({ role:'assistant', content:data.content });
+      const texts = data.content.filter(b => b.type === 'text').map(b => b.text).join('').trim();
+      if(texts) allText.push(texts);
+      if(data.stop_reason === 'tool_use'){
+        const results = data.content.filter(b => b.type === 'tool_use').map(b => {
+          let out; try{ out = runTool(b.name, b.input||{}); }catch(err){ out = { error:String(err) }; }
+          return { type:'tool_result', tool_use_id:b.id, content:JSON.stringify(out) };
+        });
+        msgs.push({ role:'user', content:results });
+        continue;
+      }
+      if(data.stop_reason === 'pause_turn') continue; // búsqueda web larga: seguir
+      if(data.stop_reason === 'refusal' && !texts) allText.push('Prefiero no ayudar con eso.');
+      finalText = texts || allText.join('\n\n');
+      break;
+    }
+    if(!finalText) finalText = allText.join('\n\n') || 'Listo.';
+    S.history.push({ role:'user', content:text }, { role:'assistant', content:finalText });
+    if(S.history.length > 24) S.history = S.history.slice(-24);
+    while(S.history.length && S.history[0].role !== 'user') S.history.shift();
+    save();
+    logMsg('a', finalText);
+    showCaption(md(finalText) + eventCards(turnEvents));
+    busy = false; setState('idle');
+    await speak(finalText);
+    if(S.settings.autoListen && S.settings.voiceOn && SR && state === 'idle') setTimeout(startListening, 300);
+  }catch(e){
+    busy = false; setState('error');
+    const msg = friendlyError(e);
+    showCaption(`<span style="color:var(--red)">${esc(msg)}</span>`);
+    logMsg('a', '⚠ ' + msg);
+    setTimeout(() => state === 'error' && setState('idle'), 3000);
+  }
+}
+
+/* =========================================================
+   8. CALENDARIO: Google Calendar, archivos .ics y el Aula
+   ========================================================= */
+const utcStamp = d => d.toISOString().replace(/[-:]/g,'').replace(/\.\d{3}/,'');
+function gcalLink(e){
+  const p = new URLSearchParams({ action:'TEMPLATE', text:e.titulo, dates:`${utcStamp(parseLocal(e.inicio))}/${utcStamp(parseLocal(e.fin))}`, details:e.notas||'' });
+  return 'https://calendar.google.com/calendar/render?' + p.toString();
+}
+const ICON_GCAL = '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M12 13v5M9.5 15.5h5"/></svg>';
+const ICON_DEL = '<svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>';
+function eventCards(list){
+  if(!list.length) return '';
+  const uniq = [...new Map(list.map(e => [e.id, e])).values()].slice(0,6);
+  return '<div class="evcards">' + uniq.map(e => `<div class="evcard"><div class="t">${esc(e.titulo)}<span>${esc(dayLabel(parseLocal(e.inicio)))} · ${e.inicio.slice(11)}–${e.fin.slice(11)}</span></div><a class="chip" href="${gcalLink(e)}" target="_blank" rel="noopener">+ Google Calendar</a></div>`).join('') + '</div>';
+}
+const icsEsc = s => String(s||'').replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\n/g,'\\n');
+function buildICS(events){
+  const L = ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Jarvis//ES','CALSCALE:GREGORIAN'];
+  for(const e of events){
+    L.push('BEGIN:VEVENT', 'UID:' + e.id + '@jarvis', 'DTSTAMP:' + utcStamp(new Date()), 'DTSTART:' + utcStamp(parseLocal(e.inicio)), 'DTEND:' + utcStamp(parseLocal(e.fin)), 'SUMMARY:' + icsEsc(e.titulo));
+    if(e.notas) L.push('DESCRIPTION:' + icsEsc(e.notas));
+    L.push('END:VEVENT');
+  }
+  L.push('END:VCALENDAR'); return L.join('\r\n');
+}
+function download(name, content, type){
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([content], { type })); a.download = name;
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+function parseICS(text){
+  const lines = text.replace(/\r?\n[ \t]/g,'').split(/\r?\n/);
+  const out = []; let cur = null;
+  const val = v => v.replace(/\\n/gi,'\n').replace(/\\([,;\\])/g,'$1');
+  const date = (v, params) => {
+    const m = v.match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})?(Z)?)?$/); if(!m) return null;
+    if(!m[4]) return new Date(+m[1], m[2]-1, +m[3], 0, 0);
+    if(m[7]) return new Date(Date.UTC(+m[1], m[2]-1, +m[3], +m[4], +m[5], +(m[6]||0)));
+    return new Date(+m[1], m[2]-1, +m[3], +m[4], +m[5]); // con TZID: se asume la hora local del teléfono
+  };
+  for(const line of lines){
+    if(line === 'BEGIN:VEVENT'){ cur = {}; continue; }
+    if(line === 'END:VEVENT'){ if(cur && cur.start) out.push(cur); cur = null; continue; }
+    if(!cur) continue;
+    const i = line.indexOf(':'); if(i < 0) continue;
+    const [name, ...params] = line.slice(0,i).split(';'), v = line.slice(i+1);
+    if(name === 'SUMMARY') cur.summary = val(v);
+    else if(name === 'DESCRIPTION') cur.desc = val(v);
+    else if(name === 'UID') cur.uid = v;
+    else if(name === 'CATEGORIES') cur.cat = val(v);
+    else if(name === 'DTSTART') cur.start = date(v, params);
+    else if(name === 'DTEND') cur.end = date(v, params);
+  }
+  return out;
+}
+function importAula(text){
+  const items = parseICS(text);
+  if(!items.length){ toast('El archivo no tiene eventos o no es un calendario válido.'); return 0; }
+  S.events = S.events.filter(e => e.origen !== 'aula');
+  for(const it of items){
+    const end = it.end && it.end > it.start ? it.end : it.start;
+    const isEval = /certamen|control|prueba|examen|quiz|evaluaci|test/i.test(it.summary||'');
+    const curso = it.cat ? ` · ${it.cat}` : '';
+    S.events.push({ id:'a' + (it.uid||uid('')).replace(/[^a-z0-9]/gi,'').slice(-14) + Math.random().toString(36).slice(2,5),
+      titulo:(it.summary||'Evento del Aula') + curso, inicio:fmtLocal(it.start), fin:fmtLocal(end), tipo:isEval?'evaluacion':'entrega',
+      notas:(it.desc||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,300), origen:'aula' });
+  }
+  sortEvents(); S.aula.lastSync = new Date().toISOString(); S.aula.count = items.length; save();
+  renderAgenda(); renderAulaInfo(); toast(`Listo: ${items.length} eventos del Aula importados.`);
+  return items.length;
+}
+async function syncAula(){
+  const url = $('#sAula').value.trim(); if(!url){ toast('Pega primero el enlace del Aula.'); return; }
+  S.aula.url = url; save();
+  try{
+    const r = await fetch(url); if(!r.ok) throw new Error('HTTP ' + r.status);
+    importAula(await r.text());
+  }catch(e){
+    toast('El Aula no permite que la app lea el enlace directamente. Usa la opción de importar el archivo .ics.', 7000);
+  }
+}
+function renderAulaInfo(){
+  $('#aulaInfo').textContent = S.aula.lastSync ? `Última importación: ${new Date(S.aula.lastSync).toLocaleString('es-CL',{dateStyle:'medium', timeStyle:'short'})} · ${S.aula.count} eventos.` : '';
+}
+
+/* =========================================================
+   9. PANELES: agenda, tareas, memoria, conversación, ajustes
+   ========================================================= */
+function renderAgenda(){
+  const el = $('#tab-agenda'), from = new Date(); from.setHours(0,0,0,0);
+  const list = S.events.filter(e => parseLocal(e.fin) >= from);
+  let html = `<div class="row"><button class="btn grow" id="expICS">Pasar todo al calendario del iPhone (.ics)</button></div>`;
+  if(!list.length) html += `<div class="empty">Tu agenda está vacía.<br>Dile algo como: “Mis clases de Álgebra son lunes y miércoles de 10 a 11:30 hasta diciembre”.</div>`;
+  let last = '';
+  for(const e of list.slice(0,300)){
+    const d = parseLocal(e.inicio), key = fmtDay(d);
+    if(key !== last){ html += `<div class="day">${esc(dayLabel(d))}</div>`; last = key; }
+    html += `<div class="item"><div class="time">${e.inicio.slice(11)}</div><div class="body">${esc(e.titulo)}<span class="badge b-${e.tipo}">${e.tipo === 'evaluacion' ? 'evaluación' : e.tipo}</span><small>hasta ${e.fin.slice(11)}${e.origen==='aula'?' · Aula':''}${e.notas?' · '+esc(e.notas.slice(0,80)):''}</small></div>
+      <div class="acts"><a class="mini" href="${gcalLink(e)}" target="_blank" rel="noopener" aria-label="Agregar a Google Calendar">${ICON_GCAL}</a><button class="mini" data-del-ev="${e.id}" aria-label="Eliminar">${ICON_DEL}</button></div></div>`;
+  }
+  el.innerHTML = html;
+}
+function renderTasks(){
+  const el = $('#tab-tareas');
+  const pr = { alta:0, media:1, baja:2 };
+  const list = [...S.tasks].sort((a,b) => (a.hecha-b.hecha) || (pr[a.prioridad]-pr[b.prioridad]) || (a.fecha||'9').localeCompare(b.fecha||'9'));
+  if(!list.length){ el.innerHTML = `<div class="empty">Sin tareas.<br>Prueba: “Anota que tengo que pagar la cuenta de luz antes del viernes”.</div>`; return; }
+  el.innerHTML = list.map(t => `<div class="item ${t.hecha?'done':''}"><button class="check" data-tog="${t.id}" aria-label="Completar">${t.hecha?'<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#03070d" stroke-width="3"><path d="M5 12l5 5 9-10"/></svg>':''}</button>
+    <div class="body">${esc(t.titulo)}<small>${t.fecha?'límite '+esc(t.fecha.replace('T',' ')):'sin fecha'} · prioridad ${t.prioridad}</small></div>
+    <div class="acts"><button class="mini" data-del-task="${t.id}" aria-label="Eliminar">${ICON_DEL}</button></div></div>`).join('');
+}
+function renderMemory(){
+  const el = $('#tab-memoria');
+  let html = `<p class="note">Lo que tu asistente recuerda de ti. Se usa en cada conversación.</p><div class="row"><input class="in" id="memNew" placeholder="Agregar un dato…"><button class="btn" id="memAdd">+</button></div>`;
+  html += S.memory.length ? S.memory.map(m => `<div class="item"><div class="body">${esc(m.dato)}<small>${m.fecha}</small></div><div class="acts"><button class="mini" data-del-mem="${m.id}" aria-label="Olvidar">${ICON_DEL}</button></div></div>`).join('')
+    : `<div class="empty">Aún no recuerda nada.<br>Cuéntale cosas de ti y las irá guardando solo.</div>`;
+  el.innerHTML = html;
+}
+function logMsg(role, text){ S.log.push({ role, text, t:new Date().toISOString() }); if(S.log.length > 300) S.log = S.log.slice(-300); save(); }
+function renderChat(){
+  const el = $('#chatLog');
+  el.innerHTML = S.log.length ? S.log.map(m => `<div class="bubble ${m.role}">${m.role==='a'?md(m.text):esc(m.text)}<div class="meta">${new Date(m.t).toLocaleString('es-CL',{dateStyle:'short', timeStyle:'short'})}</div></div>`).join('') : '<div class="empty">Todavía no hay conversación.</div>';
+  el.scrollTop = el.scrollHeight;
+}
+function renderUsage(){
+  const u = S.usage, model = S.settings.model;
+  $('#usageInfo').innerHTML = `Desde ${new Date(u.since).toLocaleDateString('es-CL')}: ${u.inTok.toLocaleString('es-CL')} tokens de entrada y ${u.outTok.toLocaleString('es-CL')} de salida${u.searches?`, ${u.searches} búsquedas`:''}.<br>Gasto estimado: <b style="color:var(--text)">US$ ${u.cost.toFixed(3)}</b>${PRICES[model]?'':' (el estimado solo cuenta Haiku; revisa el gasto real en console.anthropic.com)'}.`;
+}
+function fillSettings(){
+  const s = S.settings;
+  $('#sName').value = s.name; $('#sAsst').value = s.asst; $('#sKey').value = s.apiKey; $('#sModel').value = s.model;
+  $('#sVoiceOn').checked = s.voiceOn; $('#sAuto').checked = s.autoListen; $('#sRate').value = s.rate; $('#rateVal').textContent = Number(s.rate).toFixed(2);
+  $('#sWeb').checked = s.webSearch; $('#sAula').value = S.aula.url; if(voices.length) $('#sVoice').value = s.voiceURI;
+  $('#welcome').classList.toggle('hidden', !!s.apiKey);
+  renderUsage(); renderAulaInfo();
+}
+function readSettings(){
+  const s = S.settings;
+  s.name = $('#sName').value.trim(); s.asst = $('#sAsst').value.trim() || 'Jarvis'; s.apiKey = $('#sKey').value.trim(); s.model = $('#sModel').value;
+  s.voiceOn = $('#sVoiceOn').checked; s.autoListen = $('#sAuto').checked; s.rate = parseFloat($('#sRate').value) || 1; s.webSearch = $('#sWeb').checked;
+  if($('#sVoice').value) s.voiceURI = $('#sVoice').value;
+  S.aula.url = $('#sAula').value.trim(); save(); applyBrand();
+}
+function applyBrand(){ $('#brand').firstChild.textContent = (S.settings.asst||'Jarvis').toUpperCase().split('').join('·'); }
+function openSheet(id){
+  if(id === 'datos'){ renderAgenda(); renderTasks(); renderMemory(); }
+  if(id === 'chat') renderChat();
+  if(id === 'ajustes') fillSettings();
+  $('#sh-' + id).classList.add('open');
+}
+function closeSheets(){ document.querySelectorAll('.sheet.open').forEach(s => s.classList.remove('open')); }
+
+/* =========================================================
+   10. EVENTOS DE LA INTERFAZ
+   ========================================================= */
+document.addEventListener('click', e => {
+  const t = e.target.closest('button, a'); if(!t) return;
+  if(t.dataset.open){ openSheet(t.dataset.open); return; }
+  if(t.hasAttribute('data-close')){ if(t.closest('#sh-ajustes')) readSettings(); closeSheets(); return; }
+  if(t.dataset.q){ send(t.dataset.q); return; }
+  if(t.dataset.tab){
+    document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('act', b === t));
+    ['agenda','tareas','memoria'].forEach(n => $('#tab-'+n).classList.toggle('hidden', n !== t.dataset.tab)); return;
+  }
+  if(t.dataset.delEv){ S.events = S.events.filter(x => x.id !== t.dataset.delEv); save(); renderAgenda(); return; }
+  if(t.dataset.delTask){ S.tasks = S.tasks.filter(x => x.id !== t.dataset.delTask); save(); renderTasks(); return; }
+  if(t.dataset.tog){ const k = S.tasks.find(x => x.id === t.dataset.tog); if(k){ k.hecha = !k.hecha; save(); renderTasks(); } return; }
+  if(t.dataset.delMem){ S.memory = S.memory.filter(x => x.id !== t.dataset.delMem); save(); renderMemory(); return; }
+  if(t.id === 'memAdd'){ const v = $('#memNew').value.trim(); if(v){ runTool('memoria_guardar', { dato:v }); } return; }
+  if(t.id === 'expICS'){
+    const from = new Date(); from.setHours(0,0,0,0);
+    const list = S.events.filter(x => x.origen !== 'aula' && parseLocal(x.fin) >= from);
+    if(!list.length){ toast('No hay eventos propios para exportar.'); return; }
+    download('jarvis-agenda.ics', buildICS(list), 'text/calendar'); toast('Abre el archivo y elige "Agregar todo" en Calendario.', 5000); return;
+  }
+});
+$('#sh-datos').addEventListener('click', e => { if(e.target.id === 'sh-datos') closeSheets(); });
+$('#sh-chat').addEventListener('click', e => { if(e.target.id === 'sh-chat') closeSheets(); });
+$('#sh-ajustes').addEventListener('click', e => { if(e.target.id === 'sh-ajustes'){ readSettings(); closeSheets(); } });
+
+$('#mic').addEventListener('click', () => state === 'speaking' ? stopSpeaking() : startListening());
+$('#orbBtn').addEventListener('click', () => state === 'speaking' ? stopSpeaking() : startListening());
+$('#send').addEventListener('click', () => send($('#txt').value));
+const txt = $('#txt');
+function autosize(){ txt.style.height = 'auto'; txt.style.height = Math.min(txt.scrollHeight, 120) + 'px'; }
+txt.addEventListener('input', autosize);
+txt.addEventListener('keydown', e => { if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); send(txt.value); } });
+
+$('#showKey').addEventListener('click', () => { const k = $('#sKey'); k.type = k.type === 'password' ? 'text' : 'password'; });
+$('#sRate').addEventListener('input', e => $('#rateVal').textContent = Number(e.target.value).toFixed(2));
+$('#testVoice').addEventListener('click', () => { readSettings(); unlockAudio(); const was = S.settings.voiceOn; S.settings.voiceOn = true; speak(`${greeting()}${S.settings.name?', '+S.settings.name:''}. Sistemas en línea.`).then(()=>{ S.settings.voiceOn = was; }); });
+$('#testKey').addEventListener('click', async () => {
+  readSettings(); if(!S.settings.apiKey){ toast('Pega primero la clave.'); return; }
+  toast('Probando…');
+  try{ await callClaude({ model:S.settings.model, max_tokens:300, messages:[{ role:'user', content:'Responde solo: ok' }] }); toast('Conexión correcta. Tu asistente está listo.'); renderUsage(); $('#welcome').classList.add('hidden'); }
+  catch(e){ toast(friendlyError(e), 6000); }
+});
+$('#saveSettings').addEventListener('click', () => { readSettings(); closeSheets(); toast('Ajustes guardados.'); greet(); });
+$('#syncAula').addEventListener('click', () => { readSettings(); syncAula(); });
+$('#icsFile').addEventListener('change', async e => { const f = e.target.files[0]; if(f) importAula(await f.text()); e.target.value = ''; });
+$('#resetUsage').addEventListener('click', () => { S.usage = DEFAULTS().usage; save(); renderUsage(); });
+$('#exportAll').addEventListener('click', () => {
+  const copy = JSON.parse(JSON.stringify(S)); copy.settings.apiKey = ''; // la clave no va en el respaldo
+  download(`jarvis-respaldo-${fmtDay(new Date())}.json`, JSON.stringify(copy, null, 1), 'application/json');
+});
+$('#importAll').addEventListener('change', async e => {
+  const f = e.target.files[0]; if(!f) return;
+  try{ const d = JSON.parse(await f.text()); const key = S.settings.apiKey; localStorage.setItem(KEY, JSON.stringify(d)); S = load(); if(!S.settings.apiKey) S.settings.apiKey = key; save(); fillSettings(); toast('Respaldo restaurado.'); }
+  catch(err){ toast('Ese archivo no es un respaldo válido.'); }
+  e.target.value = '';
+});
+$('#wipe').addEventListener('click', () => { if(confirm('¿Borrar agenda, tareas, memoria y conversación? Esto no se puede deshacer.')){ const key = S.settings.apiKey; S = DEFAULTS(); S.settings.apiKey = key; save(); fillSettings(); showCaption(''); toast('Datos borrados.'); } });
+$('#clearChat').addEventListener('click', () => { S.history = []; S.log = []; save(); renderChat(); showCaption(''); toast('Conversación nueva. La memoria y la agenda se mantienen.'); });
+
+/* =========================================================
+   11. INICIO
+   ========================================================= */
+function greet(){
+  const n = S.settings.name;
+  const today = new Date(); today.setHours(0,0,0,0); const tomorrow = new Date(today.getTime() + 864e5);
+  const hoy = S.events.filter(e => { const d = parseLocal(e.inicio); return d >= new Date() && d < tomorrow; });
+  const pend = S.tasks.filter(t => !t.hecha).length;
+  let line = `${greeting()}${n ? ', <b>' + esc(n) + '</b>' : ''}. Sistemas en línea.`;
+  if(S.settings.apiKey){
+    line += hoy.length ? `<br>Te queda${hoy.length>1?'n':''} ${hoy.length} evento${hoy.length>1?'s':''} hoy; el próximo: <b>${esc(hoy[0].titulo)}</b> a las ${hoy[0].inicio.slice(11)}.` : '<br>No tienes más eventos hoy.';
+    if(pend) line += ` Tienes ${pend} tarea${pend>1?'s':''} pendiente${pend>1?'s':''}.`;
+    line += '<br><span style="color:var(--muted)">Toca el núcleo o el micrófono para hablarme.</span>';
+  } else line += '<br><span style="color:var(--muted)">Abre Ajustes para configurarme.</span>';
+  showCaption(line);
+}
+applyBrand(); sizeCanvas(); requestAnimationFrame(draw); greet();
+if(!S.settings.apiKey) setTimeout(() => openSheet('ajustes'), 400);
+</script>
+</body>
+</html>
