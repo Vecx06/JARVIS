@@ -198,16 +198,15 @@ label.f{display:block;margin:14px 0 4px;font-size:13px;color:var(--muted);letter
     <input type="range" id="sRate" min="0.7" max="1.4" step="0.05" style="width:100%;accent-color:var(--cyan)">
     <div class="row"><button class="btn grow" id="testVoice">Probar voz</button></div>
 
-    <div class="sec">AULA (MOODLE)</div>
-    <p class="note">En el Aula: Calendario → Importar o exportar calendarios → Exportar calendario → Todos los cursos → Obtener URL. Pega ese enlace aquí.</p>
-    <input class="in" id="sAula" placeholder="https://aula.usm.cl/calendar/export_execute.php?…" autocapitalize="off" spellcheck="false">
-    <div class="row"><button class="btn grow" id="syncAula">Sincronizar con el enlace</button></div>
-    <p class="note">Si el Aula no deja que la app lea el enlace directamente, descarga el archivo .ics en el Aula (botón "Exportar") e impórtalo aquí:</p>
-    <div class="row"><label class="btn grow">Importar archivo .ics<input type="file" id="icsFile" accept=".ics,text/calendar" class="hidden"></label></div>
+    <div class="sec">AULA USM</div>
+    <p class="note">Tus evaluaciones, controles y entregas del Aula vienen incluidos en la app y se cargan solos cada vez que la abres.</p>
     <p class="note" id="aulaInfo"></p>
+    <div class="row"><button class="btn grow" id="reloadAula">Recargar datos del Aula</button></div>
+    <p class="note">¿Tienes un archivo de calendario (.ics)? También puedes importarlo:</p>
+    <div class="row"><label class="btn grow">Importar archivo .ics<input type="file" id="icsFile" accept=".ics,text/calendar" class="hidden"></label></div>
 
     <div class="sec">EXTRAS</div>
-    <div class="sw"><div>Búsqueda en internet<small>Permite preguntar por noticias, clima, etc. Cuesta aprox. 1 centavo de dólar por búsqueda.</small></div><input type="checkbox" id="sWeb"></div>
+    <div class="sw"><div>Internet: buscar y leer páginas<small>Puede buscar información actual (clima, noticias, horarios) y leer enlaces que le pegues. Cada búsqueda cuesta aprox. 1 centavo de dólar; leer una página cuesta según su largo.</small></div><input type="checkbox" id="sWeb"></div>
 
     <div class="sec">GASTO</div>
     <p class="note" id="usageInfo"></p>
@@ -231,10 +230,10 @@ label.f{display:block;margin:14px 0 4px;font-size:13px;color:var(--muted);letter
    ========================================================= */
 const KEY = 'jarvis.v1';
 const DEFAULTS = () => ({
-  settings:{ apiKey:'', name:'', asst:'Jarvis', model:'claude-haiku-5-5', voiceOn:true, autoListen:false, voiceURI:'', rate:1.0, webSearch:false },
+  settings:{ v:2, apiKey:'', name:'', asst:'Jarvis', model:'claude-haiku-5-5', voiceOn:true, autoListen:false, voiceURI:'', rate:1.0, webSearch:true },
   events:[], tasks:[], memory:[], history:[], log:[],
   usage:{ inTok:0, outTok:0, cost:0, searches:0, since:new Date().toISOString() },
-  aula:{ url:'', lastSync:null, count:0 }
+  aula:{ version:'', contexto:[], lastSync:null, count:0, icsSync:null, icsCount:0 }
 });
 let S = load();
 function load(){
@@ -242,7 +241,9 @@ function load(){
     const raw = localStorage.getItem(KEY);
     if(!raw) return DEFAULTS();
     const d = JSON.parse(raw), base = DEFAULTS();
-    return { ...base, ...d, settings:{...base.settings, ...(d.settings||{})}, usage:{...base.usage, ...(d.usage||{})}, aula:{...base.aula, ...(d.aula||{})} };
+    const st = { ...base, ...d, settings:{...base.settings, ...(d.settings||{})}, usage:{...base.usage, ...(d.usage||{})}, aula:{...base.aula, ...(d.aula||{})} };
+    if(!(d.settings && d.settings.v >= 2)){ st.settings.webSearch = true; st.settings.v = 2; } // versión 2: internet activado por defecto
+    return st;
   }catch(e){ return DEFAULTS(); }
 }
 function save(){ try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){ toast('No pude guardar los datos en el teléfono.'); } }
@@ -272,6 +273,9 @@ function md(s){
   return out.replace(/(<br>)+$/,'');
 }
 const plain = s => String(s).replace(/\*\*|__|`|#+\s/g,'').replace(/^\s*[-•*]\s+/gm,'').replace(/https?:\/\/\S+/g,'el enlace').trim();
+// Limpia la clave pegada: quita espacios, saltos de línea y caracteres invisibles.
+const cleanKey = k => String(k||'').replace(/[^\x21-\x7E]/g,'').trim();
+const timeLabel = e => e.allDay ? 'todo el día' : (e.inicio === e.fin ? 'hasta ' + e.inicio.slice(11) : `${e.inicio.slice(11)}–${e.fin.slice(11)}`);
 const greeting = () => { const h = new Date().getHours(); return h < 12 ? 'Buenos días' : h < 20 ? 'Buenas tardes' : 'Buenas noches'; };
 
 /* =========================================================
@@ -432,7 +436,8 @@ const TOOLS = [
       titulo:{type:'string'}, inicio:{type:'string', description:'Fecha y hora local, formato YYYY-MM-DDTHH:MM'},
       fin:{type:'string', description:'Fecha y hora local de término, formato YYYY-MM-DDTHH:MM. Si no se sabe, omitir (dura 1 hora).'},
       tipo:{type:'string', enum:TIPOS}, notas:{type:'string'},
-      repetir_semanal_hasta:{type:'string', description:'Opcional. Fecha YYYY-MM-DD hasta la que se repite cada semana.'} },
+      repetir_semanal_hasta:{type:'string', description:'Opcional. Fecha YYYY-MM-DD hasta la que se repite cada semana.'},
+      todo_el_dia:{type:'boolean', description:'true si se sabe el día pero no la hora (en inicio basta YYYY-MM-DD).'} },
       required:['titulo','inicio','tipo'] } },
   { name:'agenda_listar', description:'Lista los eventos de la agenda entre dos fechas (incluye los importados del Aula). Úsala para fechas fuera de los 14 días que ya ves en el contexto.',
     input_schema:{ type:'object', properties:{ desde:{type:'string', description:'YYYY-MM-DD'}, hasta:{type:'string', description:'YYYY-MM-DD'} }, required:['desde','hasta'] } },
@@ -451,24 +456,25 @@ const TOOLS = [
   { name:'memoria_olvidar', description:'Borra un dato de la memoria por id (cuando el usuario lo pide o cuando quedó obsoleto).',
     input_schema:{ type:'object', properties:{ id:{type:'string'} }, required:['id'] } }
 ];
-const evOut = e => ({ id:e.id, titulo:e.titulo, inicio:e.inicio, fin:e.fin, tipo:e.tipo, notas:e.notas||undefined, origen:e.origen||'jarvis' });
+const evOut = e => ({ id:e.id, titulo:e.titulo, inicio:e.allDay ? e.inicio.slice(0,10) : e.inicio, fin:e.allDay ? undefined : e.fin, todo_el_dia:e.allDay||undefined, tipo:e.tipo, notas:e.notas||undefined, origen:e.origen||'jarvis' });
 function sortEvents(){ S.events.sort((a,b) => a.inicio.localeCompare(b.inicio)); }
 function overlaps(ini, fin, skipId){
   const a = parseLocal(ini), b = parseLocal(fin);
-  return S.events.filter(e => e.id !== skipId && parseLocal(e.inicio) < b && parseLocal(e.fin) > a).map(e => `${e.titulo} (${e.inicio.slice(11)}–${e.fin.slice(11)})`);
+  return S.events.filter(e => e.id !== skipId && !e.allDay && e.inicio !== e.fin && parseLocal(e.inicio) < b && parseLocal(e.fin) > a).map(e => `${e.titulo} (${e.inicio.slice(11)}–${e.fin.slice(11)})`);
 }
 let turnEvents = []; // eventos creados en esta respuesta, para mostrar botones
 function runTool(name, x){
   switch(name){
     case 'agenda_agregar':{
-      const ini = parseLocal(x.inicio); if(!ini) return { error:'Fecha de inicio inválida. Usa YYYY-MM-DDTHH:MM.' };
-      let fin = parseLocal(x.fin); if(!fin || fin <= ini) fin = new Date(ini.getTime() + 3600e3);
+      const allDay = !!x.todo_el_dia;
+      const ini = parseLocal(allDay ? String(x.inicio).slice(0,10) : x.inicio); if(!ini) return { error:'Fecha de inicio inválida. Usa YYYY-MM-DDTHH:MM.' };
+      let fin = allDay ? new Date(ini.getTime() + 86340e3) : parseLocal(x.fin); if(!fin || fin <= ini) fin = new Date(ini.getTime() + 3600e3);
       const dur = fin - ini, until = x.repetir_semanal_hasta ? parseLocal(x.repetir_semanal_hasta + 'T23:59') : null;
       const ids = [], choques = [];
       for(let k = 0, d = new Date(ini); k < 40; k++, d = new Date(d.getTime() + 7*864e5)){
         if(k > 0 && (!until || d > until)) break;
-        const e = { id:uid('e'), titulo:x.titulo, inicio:fmtLocal(d), fin:fmtLocal(new Date(d.getTime()+dur)), tipo:TIPOS.includes(x.tipo)?x.tipo:'otro', notas:x.notas||'', origen:'jarvis' };
-        choques.push(...overlaps(e.inicio, e.fin));
+        const e = { id:uid('e'), titulo:x.titulo, inicio:fmtLocal(d), fin:fmtLocal(new Date(d.getTime()+dur)), tipo:TIPOS.includes(x.tipo)?x.tipo:'otro', notas:x.notas||'', origen:'jarvis', allDay };
+        if(!allDay) choques.push(...overlaps(e.inicio, e.fin));
         S.events.push(e); ids.push(e.id); if(k === 0) turnEvents.push(e);
       }
       sortEvents(); save(); renderAgenda();
@@ -523,8 +529,11 @@ function buildSystem(){
   const now = new Date(), tz = Intl.DateTimeFormat().resolvedOptions().timeZone, st = S.settings;
   const in14 = new Date(now.getTime() + 14*864e5), from = new Date(now.getTime() - 12*3600e3);
   const ev = S.events.filter(e => { const d = parseLocal(e.inicio); return d >= from && d <= in14; }).slice(0,90)
-    .map(e => `- [${e.id}] ${shortDay(parseLocal(e.inicio))} ${e.inicio.slice(11)}–${e.fin.slice(11)} · ${e.titulo} (${e.tipo}${e.origen==='aula'?', Aula':''})`).join('\n') || '(sin eventos)';
-  const tk = S.tasks.filter(t => !t.hecha).map(t => `- [${t.id}] ${t.titulo}${t.fecha?' · límite '+t.fecha:''} · prioridad ${t.prioridad}`).join('\n') || '(sin tareas pendientes)';
+    .map(e => `- [${e.id}] ${shortDay(parseLocal(e.inicio))} ${e.allDay ? 'hora por confirmar' : timeLabel(e)} · ${e.titulo} (${e.tipo}${/^aula/.test(e.origen||'')?', del Aula':''})${e.notas?' — '+e.notas.slice(0,140):''}`).join('\n') || '(sin eventos)';
+  const evals = S.events.filter(e => e.tipo === 'evaluacion' && parseLocal(e.inicio) > in14).slice(0,25)
+    .map(e => `- ${shortDay(parseLocal(e.inicio))} · ${e.titulo}`).join('\n') || '(ninguna registrada)';
+  const ctx = (S.aula.contexto||[]).map(c => '- ' + c).join('\n') || '(sin datos)';
+  const tk = S.tasks.filter(t => !t.hecha).map(t => `- [${t.id}] ${t.titulo}${t.fecha?' · límite '+t.fecha:''} · prioridad ${t.prioridad}${t.notas?' — '+t.notas.slice(0,120):''}`).join('\n') || '(sin tareas pendientes)';
   const mem = S.memory.map(m => `- [${m.id}] ${m.dato}`).join('\n') || '(todavía no sabes nada guardado sobre el usuario)';
   return `Eres ${st.asst||'Jarvis'}, el asistente personal de ${st.name||'el usuario'}. Le ayudas con todo: estudios (es estudiante universitario), horario, tareas, recordatorios, planificación, ideas, redacción de mensajes, dudas y su vida personal en general.
 
@@ -536,7 +545,11 @@ HERRAMIENTAS: tienes agenda, tareas y memoria. Úsalas en vez de solo describir 
 
 PLANIFICAR ESTUDIO: prioriza evaluaciones y entregas próximas; bloques de 45 a 90 minutos con descansos; no más de 3 o 4 horas de estudio extra al día salvo que lo pida; no pongas bloques que choquen con clases u otros eventos, ni muy tarde en la noche; reparte el estudio en varios días antes de cada evaluación. Crea los bloques con tipo "estudio".
 
-LÍMITES: no puedes enviar correos ni mensajes, llamar, ni abrir otras apps; tampoco puedes avisarle a una hora exacta si la app está cerrada (los recordatorios se ven al abrir la app o pasándolos al calendario del teléfono con el botón que aparece bajo cada evento).${st.webSearch ? ' Puedes buscar en internet cuando haga falta información actual.' : ' No tienes acceso a internet; si te piden algo actual (noticias, clima), dilo y sugiere activar "Búsqueda en internet" en Ajustes.'} Si algo está fuera de tu alcance, dilo y ofrece la mejor alternativa.
+INTERNET: ${st.webSearch ? 'puedes buscar en internet (web_search) y leer páginas o PDF cuyos enlaces aparezcan en la conversación (web_fetch). Úsalo por iniciativa propia cuando la pregunta necesite información actual o que no tienes; no le pidas al usuario que busque por ti. Busca en español y prioriza fuentes chilenas cuando aplique.' : 'está desactivado. Si te piden algo actual (noticias, clima), dilo y sugiere activar "Internet" en Ajustes.'}
+
+AULA: los eventos y tareas "del Aula" ya fueron extraídos del Aula USM (calendario y cronogramas oficiales) y se actualizan solos. Tú no puedes entrar al Aula (requiere la cuenta USM del usuario). Si el usuario pregunta por algo del Aula que no está en tus datos, díselo y pídele que te pegue el enlace o el texto.
+
+LÍMITES: no puedes enviar correos ni mensajes, llamar, ni abrir otras apps; tampoco puedes avisarle a una hora exacta si la app está cerrada (los recordatorios se ven al abrir la app o pasándolos al calendario del teléfono con el botón que aparece bajo cada evento). Si algo está fuera de tu alcance, dilo y ofrece la mejor alternativa.
 
 AHORA: ${now.toLocaleString('es-CL',{dateStyle:'full', timeStyle:'short'})} (zona horaria ${tz}). Usa este formato para fechas en herramientas: YYYY-MM-DDTHH:MM, hora local.
 
@@ -547,7 +560,13 @@ AGENDA (desde hoy, próximos 14 días):
 ${ev}
 
 TAREAS PENDIENTES:
-${tk}`;
+${tk}
+
+EVALUACIONES MÁS ADELANTE (después de 14 días):
+${evals}
+
+CONTEXTO ACADÉMICO (del Aula):
+${ctx}`;
 }
 
 const PRICES = { 'claude-haiku-5-5':[0.10,0.50] }; // USD por millón de tokens (entrada, salida), prompts < 100k tokens
@@ -570,14 +589,16 @@ async function callClaude(body){
   return data;
 }
 function friendlyError(e){
-  const m = (e.message||'').toLowerCase();
-  if(e.status === 401 || m.includes('api key') || m.includes('x-api-key')) return 'La clave de API no es válida. Revísala en Ajustes.';
+  const m = (e.message||'').toLowerCase(), det = e.message ? ` (Detalle: ${e.message.slice(0,160)})` : '';
+  if(e.status === 401 || m.includes('api key') || m.includes('x-api-key')) return 'Claude rechazó la clave de API. Revisa en Ajustes que esté completa, que empiece con sk-ant- y que no esté desactivada en la consola.' + det;
   if(m.includes('credit') || m.includes('balance') || m.includes('billing')) return 'Tu cuenta de Claude no tiene saldo. Carga crédito en console.anthropic.com (Billing).';
   if(e.status === 429) return 'Demasiadas solicitudes seguidas. Espera un momento y vuelve a intentarlo.';
   if(e.status === 529 || e.status >= 500) return 'Los servidores de Claude están ocupados. Intenta de nuevo en un minuto.';
   if(e instanceof TypeError) return 'No pude conectarme. Revisa tu conexión a internet.';
   return 'Error: ' + e.message;
 }
+// Si el modelo no acepta alguna herramienta de internet, se reintenta sin ella.
+function toolProblem(e){ return e.status === 400 && /web_fetch|web_search|tool/i.test(e.message||''); }
 
 let busy = false, useEffort = true;
 async function send(text){
@@ -593,7 +614,9 @@ async function send(text){
   const msgs = S.history.map(h => ({ role:h.role, content:h.content }));
   msgs.push({ role:'user', content:text });
   const system = buildSystem(); // fijo durante todo este turno
-  const tools = S.settings.webSearch ? [...TOOLS, { type:'web_search_20250305', name:'web_search', max_uses:3 }] : TOOLS;
+  const tools = S.settings.webSearch ? [...TOOLS,
+    { type:'web_search_20250305', name:'web_search', max_uses:3, user_location:{ type:'approximate', country:'CL', timezone:'America/Santiago' } },
+    { type:'web_fetch_20260318', name:'web_fetch', max_uses:3, max_content_tokens:30000 }] : TOOLS;
   let finalText = '', allText = [];
   try{
     for(let step = 0; step < 10; step++){
@@ -603,6 +626,7 @@ async function send(text){
       try{ data = await callClaude(body); }
       catch(e){
         if(e.status === 400 && useEffort && /output_config|effort/i.test(e.message)){ useEffort = false; step--; continue; }
+        if(toolProblem(e) && body.tools.length > TOOLS.length && step === 0){ tools.splice(TOOLS.length); toast('Internet no disponible en este momento; respondo sin él.'); step--; continue; }
         throw e;
       }
       msgs.push({ role:'assistant', content:data.content });
@@ -644,8 +668,11 @@ async function send(text){
    8. CALENDARIO: Google Calendar, archivos .ics y el Aula
    ========================================================= */
 const utcStamp = d => d.toISOString().replace(/[-:]/g,'').replace(/\.\d{3}/,'');
+const dayStamp = d => fmtDay(d).replace(/-/g,'');
 function gcalLink(e){
-  const p = new URLSearchParams({ action:'TEMPLATE', text:e.titulo, dates:`${utcStamp(parseLocal(e.inicio))}/${utcStamp(parseLocal(e.fin))}`, details:e.notas||'' });
+  const ini = parseLocal(e.inicio), fin = e.inicio === e.fin ? new Date(ini.getTime() + 15*60e3) : parseLocal(e.fin);
+  const dates = e.allDay ? `${dayStamp(ini)}/${dayStamp(new Date(ini.getTime() + 864e5))}` : `${utcStamp(ini)}/${utcStamp(fin)}`;
+  const p = new URLSearchParams({ action:'TEMPLATE', text:e.titulo, dates, details:e.notas||'', ctz:'America/Santiago' });
   return 'https://calendar.google.com/calendar/render?' + p.toString();
 }
 const ICON_GCAL = '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M12 13v5M9.5 15.5h5"/></svg>';
@@ -653,13 +680,17 @@ const ICON_DEL = '<svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h1
 function eventCards(list){
   if(!list.length) return '';
   const uniq = [...new Map(list.map(e => [e.id, e])).values()].slice(0,6);
-  return '<div class="evcards">' + uniq.map(e => `<div class="evcard"><div class="t">${esc(e.titulo)}<span>${esc(dayLabel(parseLocal(e.inicio)))} · ${e.inicio.slice(11)}–${e.fin.slice(11)}</span></div><a class="chip" href="${gcalLink(e)}" target="_blank" rel="noopener">+ Google Calendar</a></div>`).join('') + '</div>';
+  return '<div class="evcards">' + uniq.map(e => `<div class="evcard"><div class="t">${esc(e.titulo)}<span>${esc(dayLabel(parseLocal(e.inicio)))} · ${timeLabel(e)}</span></div><a class="chip" href="${gcalLink(e)}" target="_blank" rel="noopener">+ Google Calendar</a></div>`).join('') + '</div>';
 }
 const icsEsc = s => String(s||'').replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\n/g,'\\n');
 function buildICS(events){
   const L = ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Jarvis//ES','CALSCALE:GREGORIAN'];
   for(const e of events){
-    L.push('BEGIN:VEVENT', 'UID:' + e.id + '@jarvis', 'DTSTAMP:' + utcStamp(new Date()), 'DTSTART:' + utcStamp(parseLocal(e.inicio)), 'DTEND:' + utcStamp(parseLocal(e.fin)), 'SUMMARY:' + icsEsc(e.titulo));
+    const ini = parseLocal(e.inicio), fin = e.inicio === e.fin ? new Date(ini.getTime() + 15*60e3) : parseLocal(e.fin);
+    L.push('BEGIN:VEVENT', 'UID:' + e.id + '@jarvis', 'DTSTAMP:' + utcStamp(new Date()));
+    if(e.allDay) L.push('DTSTART;VALUE=DATE:' + dayStamp(ini), 'DTEND;VALUE=DATE:' + dayStamp(new Date(ini.getTime() + 864e5)));
+    else L.push('DTSTART:' + utcStamp(ini), 'DTEND:' + utcStamp(fin));
+    L.push('SUMMARY:' + icsEsc(e.titulo));
     if(e.notas) L.push('DESCRIPTION:' + icsEsc(e.notas));
     L.push('END:VEVENT');
   }
@@ -697,31 +728,46 @@ function parseICS(text){
 function importAula(text){
   const items = parseICS(text);
   if(!items.length){ toast('El archivo no tiene eventos o no es un calendario válido.'); return 0; }
-  S.events = S.events.filter(e => e.origen !== 'aula');
+  S.events = S.events.filter(e => e.origen !== 'aula-ics');
   for(const it of items){
     const end = it.end && it.end > it.start ? it.end : it.start;
     const isEval = /certamen|control|prueba|examen|quiz|evaluaci|test/i.test(it.summary||'');
     const curso = it.cat ? ` · ${it.cat}` : '';
     S.events.push({ id:'a' + (it.uid||uid('')).replace(/[^a-z0-9]/gi,'').slice(-14) + Math.random().toString(36).slice(2,5),
       titulo:(it.summary||'Evento del Aula') + curso, inicio:fmtLocal(it.start), fin:fmtLocal(end), tipo:isEval?'evaluacion':'entrega',
-      notas:(it.desc||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,300), origen:'aula' });
+      notas:(it.desc||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,300), origen:'aula-ics' });
   }
-  sortEvents(); S.aula.lastSync = new Date().toISOString(); S.aula.count = items.length; save();
+  sortEvents(); S.aula.icsSync = new Date().toISOString(); S.aula.icsCount = items.length; save();
   renderAgenda(); renderAulaInfo(); toast(`Listo: ${items.length} eventos del Aula importados.`);
   return items.length;
 }
-async function syncAula(){
-  const url = $('#sAula').value.trim(); if(!url){ toast('Pega primero el enlace del Aula.'); return; }
-  S.aula.url = url; save();
-  try{
-    const r = await fetch(url); if(!r.ok) throw new Error('HTTP ' + r.status);
-    importAula(await r.text());
-  }catch(e){
-    toast('El Aula no permite que la app lea el enlace directamente. Usa la opción de importar el archivo .ics.', 7000);
-  }
-}
 function renderAulaInfo(){
-  $('#aulaInfo').textContent = S.aula.lastSync ? `Última importación: ${new Date(S.aula.lastSync).toLocaleString('es-CL',{dateStyle:'medium', timeStyle:'short'})} · ${S.aula.count} eventos.` : '';
+  const a = S.aula, el = $('#aulaInfo'); if(!el) return;
+  el.textContent = a.lastSync ? `Datos del Aula al ${a.version}: ${a.count} evaluaciones y entregas cargadas.` : 'Aún no se cargan los datos del Aula.';
+  if(a.icsSync) el.textContent += ` Además importaste ${a.icsCount} eventos desde un archivo .ics.`;
+}
+// J. Datos del Aula incluidos junto a la app (aula.json). Se cargan solos al abrir.
+async function loadAulaData(manual){
+  try{
+    const r = await fetch('aula.json?t=' + Date.now(), { cache:'no-store' });
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    if(!manual && d.version === S.aula.version) return;
+    const done = new Set(S.tasks.filter(t => t.origen === 'aula' && t.hecha).map(t => t.titulo));
+    S.events = S.events.filter(e => e.origen !== 'aula');
+    S.tasks = S.tasks.filter(t => t.origen !== 'aula');
+    for(const e of d.eventos || []){
+      const allDay = !!e.fecha && !e.inicio;
+      const inicio = allDay ? e.fecha + 'T00:00' : e.inicio, fin = allDay ? e.fecha + 'T23:59' : (e.fin || e.inicio);
+      S.events.push({ id:uid('a'), titulo:e.titulo, inicio, fin, tipo:TIPOS.includes(e.tipo) ? e.tipo : 'otro', notas:e.notas||'', origen:'aula', allDay });
+    }
+    for(const t of d.tareas || []) S.tasks.push({ id:uid('t'), titulo:t.titulo, fecha:t.fecha||'', prioridad:t.prioridad||'media', notas:t.notas||'', hecha:done.has(t.titulo), creada:fmtLocal(new Date()), origen:'aula' });
+    sortEvents();
+    S.aula.version = d.version; S.aula.contexto = d.contexto || []; S.aula.lastSync = new Date().toISOString(); S.aula.count = (d.eventos||[]).length + (d.tareas||[]).length;
+    save(); renderAulaInfo(); renderAgenda(); renderTasks();
+    if(manual) toast(`Datos del Aula cargados: ${S.aula.count} evaluaciones y entregas.`);
+    else greet();
+  }catch(e){ if(manual) toast('No pude cargar los datos del Aula. Revisa tu conexión.'); }
 }
 
 /* =========================================================
@@ -736,7 +782,7 @@ function renderAgenda(){
   for(const e of list.slice(0,300)){
     const d = parseLocal(e.inicio), key = fmtDay(d);
     if(key !== last){ html += `<div class="day">${esc(dayLabel(d))}</div>`; last = key; }
-    html += `<div class="item"><div class="time">${e.inicio.slice(11)}</div><div class="body">${esc(e.titulo)}<span class="badge b-${e.tipo}">${e.tipo === 'evaluacion' ? 'evaluación' : e.tipo}</span><small>hasta ${e.fin.slice(11)}${e.origen==='aula'?' · Aula':''}${e.notas?' · '+esc(e.notas.slice(0,80)):''}</small></div>
+    html += `<div class="item"><div class="time">${e.allDay ? '—' : e.inicio.slice(11)}</div><div class="body">${esc(e.titulo)}<span class="badge b-${e.tipo}">${e.tipo === 'evaluacion' ? 'evaluación' : e.tipo}</span><small>${e.allDay ? 'hora por confirmar' : timeLabel(e)}${/^aula/.test(e.origen||'')?' · Aula':''}${e.notas?' · '+esc(e.notas.slice(0,110)):''}</small></div>
       <div class="acts"><a class="mini" href="${gcalLink(e)}" target="_blank" rel="noopener" aria-label="Agregar a Google Calendar">${ICON_GCAL}</a><button class="mini" data-del-ev="${e.id}" aria-label="Eliminar">${ICON_DEL}</button></div></div>`;
   }
   el.innerHTML = html;
@@ -747,7 +793,7 @@ function renderTasks(){
   const list = [...S.tasks].sort((a,b) => (a.hecha-b.hecha) || (pr[a.prioridad]-pr[b.prioridad]) || (a.fecha||'9').localeCompare(b.fecha||'9'));
   if(!list.length){ el.innerHTML = `<div class="empty">Sin tareas.<br>Prueba: “Anota que tengo que pagar la cuenta de luz antes del viernes”.</div>`; return; }
   el.innerHTML = list.map(t => `<div class="item ${t.hecha?'done':''}"><button class="check" data-tog="${t.id}" aria-label="Completar">${t.hecha?'<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#03070d" stroke-width="3"><path d="M5 12l5 5 9-10"/></svg>':''}</button>
-    <div class="body">${esc(t.titulo)}<small>${t.fecha?'límite '+esc(t.fecha.replace('T',' ')):'sin fecha'} · prioridad ${t.prioridad}</small></div>
+    <div class="body">${esc(t.titulo)}<small>${t.fecha?'límite '+esc(shortDay(parseLocal(t.fecha)))+(t.fecha.length>10?' '+t.fecha.slice(11):''):'sin fecha'} · prioridad ${t.prioridad}${t.origen==='aula'?' · Aula':''}${t.notas?'<br>'+esc(t.notas.slice(0,120)):''}</small></div>
     <div class="acts"><button class="mini" data-del-task="${t.id}" aria-label="Eliminar">${ICON_DEL}</button></div></div>`).join('');
 }
 function renderMemory(){
@@ -771,16 +817,16 @@ function fillSettings(){
   const s = S.settings;
   $('#sName').value = s.name; $('#sAsst').value = s.asst; $('#sKey').value = s.apiKey; $('#sModel').value = s.model;
   $('#sVoiceOn').checked = s.voiceOn; $('#sAuto').checked = s.autoListen; $('#sRate').value = s.rate; $('#rateVal').textContent = Number(s.rate).toFixed(2);
-  $('#sWeb').checked = s.webSearch; $('#sAula').value = S.aula.url; if(voices.length) $('#sVoice').value = s.voiceURI;
+  $('#sWeb').checked = s.webSearch; if(voices.length) $('#sVoice').value = s.voiceURI;
   $('#welcome').classList.toggle('hidden', !!s.apiKey);
   renderUsage(); renderAulaInfo();
 }
 function readSettings(){
   const s = S.settings;
-  s.name = $('#sName').value.trim(); s.asst = $('#sAsst').value.trim() || 'Jarvis'; s.apiKey = $('#sKey').value.trim(); s.model = $('#sModel').value;
+  s.name = $('#sName').value.trim(); s.asst = $('#sAsst').value.trim() || 'Jarvis'; s.apiKey = cleanKey($('#sKey').value); $('#sKey').value = s.apiKey; s.model = $('#sModel').value;
   s.voiceOn = $('#sVoiceOn').checked; s.autoListen = $('#sAuto').checked; s.rate = parseFloat($('#sRate').value) || 1; s.webSearch = $('#sWeb').checked;
   if($('#sVoice').value) s.voiceURI = $('#sVoice').value;
-  S.aula.url = $('#sAula').value.trim(); save(); applyBrand();
+  save(); applyBrand();
 }
 function applyBrand(){ $('#brand').firstChild.textContent = (S.settings.asst||'Jarvis').toUpperCase().split('').join('·'); }
 function openSheet(id){
@@ -810,8 +856,8 @@ document.addEventListener('click', e => {
   if(t.id === 'memAdd'){ const v = $('#memNew').value.trim(); if(v){ runTool('memoria_guardar', { dato:v }); } return; }
   if(t.id === 'expICS'){
     const from = new Date(); from.setHours(0,0,0,0);
-    const list = S.events.filter(x => x.origen !== 'aula' && parseLocal(x.fin) >= from);
-    if(!list.length){ toast('No hay eventos propios para exportar.'); return; }
+    const list = S.events.filter(x => parseLocal(x.fin) >= from);
+    if(!list.length){ toast('No hay eventos para exportar.'); return; }
     download('jarvis-agenda.ics', buildICS(list), 'text/calendar'); toast('Abre el archivo y elige "Agregar todo" en Calendario.', 5000); return;
   }
 });
@@ -837,7 +883,7 @@ $('#testKey').addEventListener('click', async () => {
   catch(e){ toast(friendlyError(e), 6000); }
 });
 $('#saveSettings').addEventListener('click', () => { readSettings(); closeSheets(); toast('Ajustes guardados.'); greet(); });
-$('#syncAula').addEventListener('click', () => { readSettings(); syncAula(); });
+$('#reloadAula').addEventListener('click', () => loadAulaData(true));
 $('#icsFile').addEventListener('change', async e => { const f = e.target.files[0]; if(f) importAula(await f.text()); e.target.value = ''; });
 $('#resetUsage').addEventListener('click', () => { S.usage = DEFAULTS().usage; save(); renderUsage(); });
 $('#exportAll').addEventListener('click', () => {
@@ -859,17 +905,19 @@ $('#clearChat').addEventListener('click', () => { S.history = []; S.log = []; sa
 function greet(){
   const n = S.settings.name;
   const today = new Date(); today.setHours(0,0,0,0); const tomorrow = new Date(today.getTime() + 864e5);
-  const hoy = S.events.filter(e => { const d = parseLocal(e.inicio); return d >= new Date() && d < tomorrow; });
+  const hoy = S.events.filter(e => { const d = parseLocal(e.inicio); return (e.allDay ? d >= today : d >= new Date()) && d < tomorrow; });
   const pend = S.tasks.filter(t => !t.hecha).length;
   let line = `${greeting()}${n ? ', <b>' + esc(n) + '</b>' : ''}. Sistemas en línea.`;
   if(S.settings.apiKey){
-    line += hoy.length ? `<br>Te queda${hoy.length>1?'n':''} ${hoy.length} evento${hoy.length>1?'s':''} hoy; el próximo: <b>${esc(hoy[0].titulo)}</b> a las ${hoy[0].inicio.slice(11)}.` : '<br>No tienes más eventos hoy.';
+    line += hoy.length ? `<br>Te queda${hoy.length>1?'n':''} ${hoy.length} evento${hoy.length>1?'s':''} hoy; el próximo: <b>${esc(hoy[0].titulo)}</b>${hoy[0].allDay ? '' : ' a las ' + hoy[0].inicio.slice(11)}.` : '<br>No tienes más eventos hoy.';
     if(pend) line += ` Tienes ${pend} tarea${pend>1?'s':''} pendiente${pend>1?'s':''}.`;
+    const nextEval = S.events.find(e => e.tipo === 'evaluacion' && parseLocal(e.fin) >= new Date());
+    if(nextEval) line += `<br>Próxima evaluación: <b>${esc(nextEval.titulo)}</b>, ${esc(dayLabel(parseLocal(nextEval.inicio)))}.`;
     line += '<br><span style="color:var(--muted)">Toca el núcleo o el micrófono para hablarme.</span>';
   } else line += '<br><span style="color:var(--muted)">Abre Ajustes para configurarme.</span>';
   showCaption(line);
 }
-applyBrand(); sizeCanvas(); requestAnimationFrame(draw); greet();
+applyBrand(); sizeCanvas(); requestAnimationFrame(draw); greet(); loadAulaData(false);
 if(!S.settings.apiKey) setTimeout(() => openSheet('ajustes'), 400);
 </script>
 </body>

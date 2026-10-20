@@ -1,0 +1,48 @@
+{
+  "version": "2026-10-20",
+  "generado": "2026-10-20T17:45",
+  "fuente": "Aula USM: calendario, páginas de cada ramo y cronogramas oficiales (INF129, FIS111, MAT061, MAT070, HRW133)",
+  "eventos": [
+    { "titulo": "Certamen 2 · MAT070 Intro al Cálculo", "fecha": "2026-10-23", "tipo": "evaluacion", "notas": "En el taller del viernes. Materia hasta la clase 18: funciones invertibles, exponencial y logaritmo, modelos exponenciales, funciones trigonométricas y sinusoidales, trigonométricas inversas y ecuaciones trigonométricas." },
+    { "titulo": "Cierra Ejercicios de Corrección Automática – Listas · INF129", "inicio": "2026-10-25T23:55", "fin": "2026-10-25T23:55", "tipo": "entrega", "notas": "Cuestionario en el Aula." },
+    { "titulo": "Tarea 3: Listas · INF129", "inicio": "2026-10-30T17:30", "fin": "2026-10-30T17:30", "tipo": "entrega", "notas": "Se abre el martes 27 oct a las 09:30 y cierra el viernes 30 oct a las 17:30. La ventana exacta depende de tu grupo de laboratorio." },
+    { "titulo": "Control 4 · FIS111 Física", "fecha": "2026-10-30", "tipo": "evaluacion", "notas": "En la ayudantía del viernes. Ese día la programación también marca 'RAV'." },
+    { "titulo": "Control 6 · MAT070 Intro al Cálculo", "fecha": "2026-10-30", "tipo": "evaluacion", "notas": "En el taller. Materia hasta la clase 20 (límites)." },
+    { "titulo": "Control recuperativo · MAT070", "fecha": "2026-11-06", "tipo": "evaluacion", "notas": "Esa semana el taller solo tiene control recuperativo (si te corresponde)." },
+    { "titulo": "Control 3 · MAT061 Álgebra Lineal", "fecha": "2026-11-09", "tipo": "evaluacion", "notas": "En el bloque de ayudantía." },
+    { "titulo": "Tarea 5 · FIS111 Física", "fecha": "2026-11-10", "tipo": "entrega", "notas": "Según la programación de la cátedra." },
+    { "titulo": "Control 5 · FIS111 Física", "fecha": "2026-11-13", "tipo": "evaluacion", "notas": "En la ayudantía del viernes." },
+    { "titulo": "Certamen 3 · FIS111 Física", "fecha": "2026-11-16", "tipo": "evaluacion", "notas": "Hora y sala por confirmar." },
+    { "titulo": "Certamen 3 · MAT070 Intro al Cálculo", "fecha": "2026-11-20", "tipo": "evaluacion", "notas": "En el taller. Materia hasta la clase 26: límites, continuidad y derivadas." },
+    { "titulo": "Certamen 3 · MAT061 Álgebra Lineal", "fecha": "2026-11-23", "tipo": "evaluacion", "notas": "En el bloque de ayudantía." },
+    { "titulo": "Certámenes recuperativos · MAT070", "fecha": "2026-11-25", "tipo": "evaluacion", "notas": "Módulos 3-4, sala por confirmar. Solo si te corresponde." },
+    { "titulo": "Certamen 2 · INF129 Programación", "fecha": "2026-11-27", "tipo": "evaluacion", "notas": "Hora y sala por confirmar." },
+    { "titulo": "Certamen Global · FIS111 Física", "fecha": "2026-11-30", "tipo": "evaluacion", "notas": "Hora y sala por confirmar." },
+    { "titulo": "Evaluaciones recuperativas · MAT061", "fecha": "2026-11-30", "tipo": "evaluacion", "notas": "Horario por confirmar. Solo si te corresponde." },
+    { "titulo": "Certamen Global · MAT070 Intro al Cálculo", "fecha": "2026-12-02", "tipo": "evaluacion", "notas": "Módulos 3-4, salas por confirmar." },
+    { "titulo": "Certamen Global · MAT061 Álgebra Lineal", "fecha": "2026-12-03", "tipo": "evaluacion", "notas": "Horario por confirmar." },
+    { "titulo": "Certamen Recuperativo · INF129 Programación", "fecha": "2026-12-04", "tipo": "evaluacion", "notas": "Solo si te corresponde. Es el último día del semestre." },
+    { "titulo": "Exámenes · INF129 Programación", "fecha": "2026-12-09", "tipo": "evaluacion", "notas": "Exámenes (*) entre el 9 y el 11 de diciembre, si te corresponde." }
+  ],
+  "tareas": [
+    { "titulo": "Entregar Portafolio 2 · HRW133 Ética", "fecha": "2026-10-23", "prioridad": "alta", "notas": "Semana del 19 oct según el calendario actualizado. Confirma el día exacto." },
+    { "titulo": "Control U6 · INF129 (en tu laboratorio)", "fecha": "2026-10-23", "prioridad": "alta", "notas": "Esta semana (19–23 oct), en tu horario de laboratorio." },
+    { "titulo": "Certamen II · HRW133 Ética", "fecha": "2026-10-26", "prioridad": "alta", "notas": "En la primera clase de la semana del 26 oct. Confirma qué día es tu primera clase." },
+    { "titulo": "Control U7 · INF129 (en tu laboratorio)", "fecha": "2026-11-06", "prioridad": "alta", "notas": "Semana del 2 al 6 de noviembre." },
+    { "titulo": "Entrega T4P1 (40%) · INF129", "fecha": "2026-11-06", "prioridad": "alta", "notas": "Semana del 2 al 6 de noviembre." },
+    { "titulo": "Interrogación T3 (muestra) · INF129", "fecha": "2026-11-06", "prioridad": "media", "notas": "Semana del 2 al 6 de noviembre." },
+    { "titulo": "Control U8 · INF129 (en tu laboratorio)", "fecha": "2026-11-13", "prioridad": "alta", "notas": "Semana del 9 al 13 de noviembre." },
+    { "titulo": "Entrega T4P2 (40%) · INF129", "fecha": "2026-11-13", "prioridad": "alta", "notas": "Semana del 9 al 13 de noviembre." },
+    { "titulo": "Certamen III + Portafolio 3 · HRW133 Ética", "fecha": "2026-11-16", "prioridad": "alta", "notas": "Certamen en la primera clase de la semana del 16 nov y entrega del Portafolio 3. Después vienen presentaciones hasta el 4 dic." },
+    { "titulo": "Interrogación T4 (quiz 20%) · INF129", "fecha": "2026-11-20", "prioridad": "alta", "notas": "Semana del 16 al 20 de noviembre." }
+  ],
+  "contexto": [
+    "Ramos del semestre 2026-2 en el Aula: FIS111 Física General Mecánica; MAT061 Álgebra Lineal (con laboratorio MAT061L y ayudantía); MAT070 Introducción al Cálculo (con taller MAT070T); INF129 Introducción a la Programación; HRW133 Ética y Argumentación Crítica; EFI201 Educación Física II.",
+    "El semestre termina el viernes 4 de diciembre. El 7 y 8 de diciembre son feriados. Exámenes de programación entre el 9 y el 11 de diciembre.",
+    "MAT061 materia que viene: 26–30 oct transformaciones lineales, imagen y núcleo, representación matricial e isomorfismos (secciones 7.1 a 7.4); 2–6 nov valores y vectores propios, matrices semejantes y diagonalización (8.1 y 8.3); 9–13 nov matrices simétricas y diagonalización ortogonal (8.4). Luego consultas y ejercitación.",
+    "MAT070 materia que viene: 26–30 oct límites infinitos y al infinito, número e, asíntotas; 2–6 nov continuidad, discontinuidades, teorema del valor intermedio y de valores extremos; 9–13 nov la derivada, álgebra de derivadas, regla de la cadena, derivadas de orden superior; 16 nov razón de cambio.",
+    "INF129: unidad 6 (listas) hasta fines de octubre; unidades 7 y 8 en noviembre. Los controles son en el laboratorio, en el horario del grupo del usuario.",
+    "HRW133: después del Certamen II vienen la Unidad 3 y análisis de casos; desde el 16 nov, presentaciones.",
+    "Las evaluaciones sin hora se rinden en el horario del ramo (taller, ayudantía, laboratorio o cátedra). Si necesitas la hora exacta para planificar, pregúntale al usuario su horario y guárdalo en memoria."
+  ]
+}
