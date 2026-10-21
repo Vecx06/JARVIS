@@ -343,7 +343,7 @@ function loadDevice(){
   let legacy = null; try{ legacy = JSON.parse(lsGet(LEGACY_KEY) || 'null'); }catch(e){}
   const ls = (legacy && legacy.settings) || {};
   d = { apiKey:ls.apiKey||'', model:ls.model||'claude-haiku-5-5', voiceURI:ls.voiceURI||'', rate:ls.rate||1.0, voiceOn:ls.voiceOn !== false,
-        active:'p1', profiles:[{ id:'p1', name:ls.name||'', usaAula:true, githubToken:'', gistId:'', pin:'' }] };
+        active:'p1', profiles:[{ id:'p1', name:ls.name||'', usaAula:!!legacy, githubToken:'', gistId:'', pin:'' }] };
   if(legacy) lsSet(profKey('p1'), JSON.stringify(legacy));
   lsSet(DEV_KEY, JSON.stringify(d));
   return d;
@@ -372,6 +372,7 @@ let S = load();
 function persistLocal(){
   for(const f of DEVICE_FIELDS) D[f] = S.settings[f];
   if(S.settings.name && S.settings.name !== P.name){ P.name = S.settings.name; }
+  S.settings.usaAula = !!P.usaAula;
   saveDevice();
   if(!lsSet(KEY, JSON.stringify(S))) toast('No pude guardar los datos en este dispositivo.');
 }
@@ -425,7 +426,11 @@ function applyRemote(remote, merge){
     if(lastT(S.log) > lastT(r.log)){ r.log = S.log; r.history = S.history; }
   }
   r.updatedAt = merge ? new Date().toISOString() : remote.updatedAt; r.syncedAt = merge ? '' : remote.updatedAt;
-  S = r; sortEvents(); persistLocal(); refreshAll();
+  const aulaChanged = typeof r.settings.usaAula === 'boolean' && r.settings.usaAula !== !!P.usaAula;
+  if(aulaChanged){ P.usaAula = r.settings.usaAula; saveDevice(); }
+  S = r; sortEvents(); persistLocal();
+  if(aulaChanged){ location.reload(); return; }
+  refreshAll();
 }
 async function syncNow(manual){
   if(!P.githubToken || syncBusy || !navigator.onLine) return;
@@ -1422,6 +1427,7 @@ function renderAccount(){
     <label class="f" for="acTok">Sincronizar entre dispositivos: token de GitHub</label>
     <div class="row" style="margin:0"><input class="in" id="acTok" type="password" placeholder="github_pat_…" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(P.githubToken)}"><button class="btn" id="acTokSave">Conectar</button></div>
     <p class="note">Con el token, esta cuenta guarda sus datos en un archivo secreto (Gist privado) de GitHub y los ve igual en todos sus dispositivos. <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">Crear token</a>: en "Account permissions", dale a <b>Gists</b> el acceso "Read and write". La clave de Claude no se sube nunca.</p>
+    <div class="sw"><div>Usar los datos del Aula USM<small>Evaluaciones y entregas de los ramos de Victor en la USM.</small></div><input type="checkbox" id="acAula"${P.usaAula ? ' checked' : ''}></div>
     <div class="row"><button class="btn grow" id="acSync"${P.githubToken ? '' : ' disabled'}>Sincronizar ahora</button><button class="btn ghost grow" id="acPin">${P.pin ? 'Quitar PIN' : 'Poner PIN'}</button></div>
     <div class="row"><button class="btn ghost grow" id="acAdd">Agregar otra cuenta</button>${others.length ? '<button class="btn danger" id="acDel">Quitar esta cuenta</button>' : ''}</div>
     <div id="acForm" class="hidden" style="border:1px solid var(--line2);border-radius:12px;padding:4px 12px 12px;margin-top:6px">
@@ -1438,6 +1444,12 @@ async function switchTo(id){
   if(t.pin){ const v = prompt('PIN de ' + (t.name || 'la cuenta')); if(v === null) return; if(await sha('jarvis:' + v) !== t.pin){ toast('PIN incorrecto.'); return; } sessionStorage.setItem('jarvis.unlocked', t.id); }
   await flushSync(); D.active = id; saveDevice(); location.reload();
 }
+$('#sh-ajustes').addEventListener('change', async e => {
+  if(e.target.id !== 'acAula') return;
+  readSettings(); P.usaAula = e.target.checked;
+  if(!P.usaAula){ S.events = S.events.filter(x => x.origen !== 'aula'); S.tasks = S.tasks.filter(x => x.origen !== 'aula'); S.aula.version = ''; }
+  save(); await flushSync(); location.reload();
+});
 $('#sh-ajustes').addEventListener('click', async e => {
   const t = e.target.closest('button'); if(!t || !t.closest('#acctBox')) return;
   if(t.dataset.switch){ readSettings(); switchTo(t.dataset.switch); return; }
