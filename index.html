@@ -118,6 +118,8 @@ main{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center}
 .chip{font:500 12.5px var(--f-body);border:1px solid var(--line2);border-radius:999px;padding:8px 13px;color:var(--ink);background:rgba(13,13,18,.82);white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
 .chip::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--c,var(--acc));box-shadow:0 0 8px var(--c,var(--acc))}
 .evcard .chip{font-size:11.5px;padding:6px 10px}
+.msgc{align-items:flex-start}
+.msgc .mbody{white-space:pre-wrap;color:var(--ink)!important;font-size:13.5px!important;margin-top:6px;line-height:1.45;max-height:180px;overflow:auto}
 #quick{display:flex;gap:7px;overflow-x:auto;width:100%;padding:9px 0 1px;scrollbar-width:none}
 #quick::-webkit-scrollbar{display:none}
 #attachBar{display:flex;gap:8px;overflow-x:auto;padding-top:8px;scrollbar-width:none}
@@ -235,7 +237,7 @@ label.f{display:block;margin:14px 0 5px;font-size:13px;color:var(--dim)}
 
   <div id="attachBar" class="hidden"></div>
   <footer>
-    <label class="dockbtn" id="clip" aria-label="Adjuntar foto o archivo"><svg viewBox="0 0 24 24"><path d="M21.4 11.1l-8.5 8.5a5.5 5.5 0 0 1-7.8-7.8l8.5-8.5a3.7 3.7 0 0 1 5.2 5.2l-8.5 8.5a1.8 1.8 0 0 1-2.6-2.6l7.8-7.8"/></svg><input type="file" id="fileIn" multiple accept="image/*,application/pdf,.pdf,.txt,.csv,.md,.json,text/plain" class="hidden"></label>
+    <label class="dockbtn" id="clip" aria-label="Adjuntar foto o archivo"><svg viewBox="0 0 24 24"><path d="M21.4 11.1l-8.5 8.5a5.5 5.5 0 0 1-7.8-7.8l8.5-8.5a3.7 3.7 0 0 1 5.2 5.2l-8.5 8.5a1.8 1.8 0 0 1-2.6-2.6l7.8-7.8"/></svg><input type="file" id="fileIn" multiple accept="image/*,application/pdf,.pdf,.docx,.xlsx,.xls,.txt,.csv,.md,.json,text/plain" class="hidden"></label>
     <textarea id="txt" rows="1" placeholder="Escribe o habla…" enterkeyhint="send"></textarea>
     <button class="dockbtn" id="send" aria-label="Enviar"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
     <button id="mic" aria-label="Hablar"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
@@ -300,6 +302,7 @@ label.f{display:block;margin:14px 0 5px;font-size:13px;color:var(--dim)}
     <div class="row"><label class="btn grow">Importar archivo .ics<input type="file" id="icsFile" accept=".ics,text/calendar" class="hidden"></label></div>
 
     <div class="sec">EXTRAS</div>
+    <div class="sw"><div>Consultar a Claude Opus cuando haga falta<small>Si una pregunta es difícil o no está seguro, Jarvis le pide ayuda a Claude Opus 5.5, el modelo más inteligente. Cada consulta cuesta aprox. 5 a 7 centavos de dólar; solo la usa cuando vale la pena.</small></div><input type="checkbox" id="sAdv"></div>
     <div class="sw"><div>Internet: buscar y leer páginas<small>Puede buscar información actual (clima, noticias, horarios) y leer enlaces que le pegues. Cada búsqueda cuesta aprox. 1 centavo de dólar; leer una página cuesta según su largo.</small></div><input type="checkbox" id="sWeb"></div>
 
     <div class="sec">GASTO</div>
@@ -324,9 +327,9 @@ label.f{display:block;margin:14px 0 5px;font-size:13px;color:var(--dim)}
    ========================================================= */
 const KEY = 'jarvis.v1';
 const DEFAULTS = () => ({
-  settings:{ v:2, apiKey:'', name:'', asst:'Jarvis', model:'claude-haiku-5-5', voiceOn:true, autoListen:false, voiceURI:'', rate:1.0, webSearch:true },
+  settings:{ v:3, apiKey:'', name:'', asst:'Jarvis', model:'claude-haiku-5-5', voiceOn:true, autoListen:false, voiceURI:'', rate:1.0, webSearch:true, advisor:true },
   events:[], tasks:[], memory:[], history:[], log:[], horario:[],
-  usage:{ inTok:0, outTok:0, cost:0, searches:0, since:new Date().toISOString() },
+  usage:{ inTok:0, outTok:0, cost:0, searches:0, advice:0, since:new Date().toISOString() },
   aula:{ version:'', contexto:[], lastSync:null, count:0, icsSync:null, icsCount:0 }
 });
 let S = load();
@@ -337,6 +340,7 @@ function load(){
     const d = JSON.parse(raw), base = DEFAULTS();
     const st = { ...base, ...d, settings:{...base.settings, ...(d.settings||{})}, usage:{...base.usage, ...(d.usage||{})}, aula:{...base.aula, ...(d.aula||{})} };
     if(!(d.settings && d.settings.v >= 2)){ st.settings.webSearch = true; st.settings.v = 2; } // versión 2: internet activado por defecto
+    if(st.settings.v < 3){ st.settings.advisor = true; st.settings.v = 3; } // versión 3: asesor (Claude Opus) activado por defecto
     return st;
   }catch(e){ return DEFAULTS(); }
 }
@@ -585,6 +589,15 @@ const TOOLS = [
         sala:{type:'string'} }, required:['ramo','dia','inicio','fin'] } },
       hasta:{type:'string', description:'YYYY-MM-DD; por defecto el fin del semestre (2026-12-04)'} },
       required:['clases'] } },
+  { name:'preparar_mensaje', description:'Prepara un correo, un WhatsApp o un SMS para que el usuario lo envíe con un toque. La app muestra un botón que abre Mail, WhatsApp o Mensajes con todo escrito; el usuario revisa y presiona enviar. Úsala siempre que el usuario pida mandar un mensaje o correo.',
+    input_schema:{ type:'object', properties:{
+      canal:{type:'string', enum:['correo','whatsapp','sms']},
+      destinatario:{type:'string', description:'Correo (para correo) o número con código de país, ej. +56912345678 (para WhatsApp o SMS). Opcional: si no se sabe, el usuario elige el contacto al abrir la app.'},
+      nombre:{type:'string', description:'Nombre de la persona, para mostrarlo'},
+      asunto:{type:'string', description:'Solo para correo'},
+      cuerpo:{type:'string'} }, required:['canal','cuerpo'] } },
+  { name:'cerrar_conversacion', description:'Llámala cuando el usuario indique que terminó (se despide, dice "eso es todo", "nada más", "gracias, listo", etc.). Detiene la escucha continua del micrófono. Despídete en una frase corta.',
+    input_schema:{ type:'object', properties:{} } },
   { name:'memoria_guardar', description:'Guarda un dato duradero sobre el usuario para recordarlo en futuras conversaciones (horario, ramos, gustos, metas, personas importantes, preferencias sobre cómo ayudarle). Un dato por llamada, en una frase corta.',
     input_schema:{ type:'object', properties:{ dato:{type:'string'} }, required:['dato'] } },
   { name:'memoria_olvidar', description:'Borra un dato de la memoria por id (cuando el usuario lo pide o cuando quedó obsoleto).',
@@ -597,6 +610,8 @@ function overlaps(ini, fin, skipId){
   return S.events.filter(e => e.id !== skipId && !e.allDay && e.inicio !== e.fin && parseLocal(e.inicio) < b && parseLocal(e.fin) > a).map(e => `${e.titulo} (${e.inicio.slice(11)}–${e.fin.slice(11)})`);
 }
 let turnEvents = []; // eventos creados en esta respuesta, para mostrar botones
+let turnMsgs = [], closing = false;
+const CLOSE_RE = /\b(eso (es|ser[ií]a) todo|nada m[aá]s|eso nom[aá]s|ya est[aá]( bien)?|listo,? gracias|gracias,? (eso es todo|listo|nada m[aá]s)|chao|ch[aá]u|adi[oó]s|hasta (luego|ma[nñ]ana|pronto)|nos vemos|buenas noches|terminamos|ap[aá]gate|descansa|fin de la conversaci[oó]n)\b/i;
 function runTool(name, x){
   switch(name){
     case 'agenda_agregar':{
@@ -667,6 +682,12 @@ function runTool(name, x){
       sortEvents(); save(); renderAgenda();
       return { ok:true, bloques_semanales:clases.length, eventos_creados:n, hasta:fmtDay(until) };
     }
+    case 'preparar_mensaje':{
+      const m = { canal:['correo','whatsapp','sms'].includes(x.canal) ? x.canal : 'correo', to:String(x.destinatario||'').trim(), nombre:x.nombre||'', asunto:x.asunto||'', cuerpo:String(x.cuerpo||'') };
+      turnMsgs.push(m);
+      return { ok:true, nota:'Se mostró un botón para que el usuario abra la app con el mensaje listo y lo envíe él mismo. No digas que ya se envió.' };
+    }
+    case 'cerrar_conversacion':{ closing = true; return { ok:true }; }
     case 'memoria_guardar':{
       const m = { id:uid('m'), dato:String(x.dato).slice(0,400), fecha:fmtDay(new Date()) };
       S.memory.push(m); save(); renderMemory(); return { ok:true, id:m.id };
@@ -704,11 +725,17 @@ PLANIFICAR ESTUDIO: prioriza evaluaciones y entregas próximas; bloques de 45 a 
 
 INTERNET: ${st.webSearch ? 'puedes buscar en internet (web_search) y leer páginas o PDF cuyos enlaces aparezcan en la conversación (web_fetch). Úsalo por iniciativa propia cuando la pregunta necesite información actual o que no tienes; no le pidas al usuario que busque por ti. Busca en español y prioriza fuentes chilenas cuando aplique.' : 'está desactivado. Si te piden algo actual (noticias, clima), dilo y sugiere activar "Internet" en Ajustes.'}
 
+MENSAJES Y CORREOS: no puedes enviarlos tú directamente, pero con preparar_mensaje dejas un correo, WhatsApp o SMS listo para que el usuario lo mande con un toque. Escríbelo en su voz, natural y breve, salvo que pida otro tono. Si el usuario te da el correo o teléfono de alguien, guárdalo con memoria_guardar (ej. "Correo del profe de Física: ...") para la próxima vez.
+
+ASESOR: ${st.advisor ? 'tienes la herramienta "advisor", que consulta a Claude Opus 5.5, un modelo más inteligente. Úsala cuando la pregunta sea difícil (un ejercicio de matemáticas o física, algo que requiere razonar varios pasos, una decisión importante) o cuando no estés seguro de tu respuesta. No la uses para cosas simples (agenda, saludos, datos que ya tienes), porque cuesta más.' : 'desactivado.'}
+
+CIERRE: cuando el usuario se despida o diga que eso es todo, llama a cerrar_conversacion y despídete en una frase.
+
 ADJUNTOS: el usuario puede mandarte fotos, PDF o archivos de texto. Léelos con atención. Si es su horario de clases, usa horario_cargar con TODAS las clases (no inventes las que no se lean; si algo es ilegible, pregunta). Después, usa el horario para darle hora a las evaluaciones que dicen "hora por confirmar" cuando el horario lo permita (con agenda_modificar), y cuéntale qué hiciste en 2 o 3 frases.
 
 AULA: los eventos y tareas "del Aula" ya fueron extraídos del Aula USM (calendario y cronogramas oficiales) y se actualizan solos. Tú no puedes entrar al Aula (requiere la cuenta USM del usuario). Si el usuario pregunta por algo del Aula que no está en tus datos, díselo y pídele que te pegue el enlace o el texto.
 
-LÍMITES: no puedes enviar correos ni mensajes, llamar, ni abrir otras apps; tampoco puedes avisarle a una hora exacta si la app está cerrada (los recordatorios se ven al abrir la app o pasándolos al calendario del teléfono con el botón que aparece bajo cada evento). Si algo está fuera de tu alcance, dilo y ofrece la mejor alternativa.
+LÍMITES: no puedes enviar correos ni mensajes por tu cuenta (solo dejarlos listos), llamar, ni controlar el computador del usuario; tampoco puedes avisarle a una hora exacta si la app está cerrada (los recordatorios se ven al abrir la app o pasándolos al calendario del teléfono con el botón que aparece bajo cada evento). Si algo está fuera de tu alcance, dilo y ofrece la mejor alternativa.
 
 AHORA: ${now.toLocaleString('es-CL',{dateStyle:'full', timeStyle:'short'})} (zona horaria ${tz}). Usa este formato para fechas en herramientas: YYYY-MM-DDTHH:MM, hora local.
 
@@ -731,11 +758,14 @@ HORARIO SEMANAL DE CLASES:
 ${hor}`;
 }
 
-const PRICES = { 'claude-haiku-5-5':[0.10,0.50] }; // USD por millón de tokens (entrada, salida), prompts < 100k tokens
+const PRICES = { 'claude-haiku-5-5':[0.10,0.50], 'claude-sonnet-5-5':[2,10], 'claude-opus-5-5':[4,20] }; // USD por millón de tokens (entrada, salida)
+const ADVISOR_MODEL = 'claude-opus-5-5';
+let advisorBroken = false; // si el asesor falla en este teléfono, se desactiva hasta reabrir la app
 async function callClaude(body){
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method:'POST',
-    headers:{ 'content-type':'application/json', 'x-api-key':S.settings.apiKey, 'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true' },
+    headers:{ 'content-type':'application/json', 'x-api-key':S.settings.apiKey, 'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true',
+      ...((body.tools||[]).some(t => t.type === 'advisor_20260301') ? { 'anthropic-beta':'advisor-tool-2026-03-01' } : {}) },
     body:JSON.stringify(body)
   });
   const data = await res.json().catch(() => ({}));
@@ -745,7 +775,15 @@ async function callClaude(body){
   }
   const u = data.usage || {}, inT = (u.input_tokens||0) + (u.cache_read_input_tokens||0) + (u.cache_creation_input_tokens||0), outT = u.output_tokens||0;
   S.usage.inTok += inT; S.usage.outTok += outT;
-  const p = PRICES[body.model]; if(p) S.usage.cost += inT*p[0]/1e6 + outT*p[1]/1e6;
+  if(Array.isArray(u.iterations) && u.iterations.length){
+    // Con asesor, cada paso se cobra al precio de su modelo.
+    for(const it of u.iterations){
+      const pm = PRICES[it.type === 'advisor_message' ? (it.model || ADVISOR_MODEL) : body.model]; if(!pm) continue;
+      const i2 = (it.input_tokens||0) + (it.cache_read_input_tokens||0) + (it.cache_creation_input_tokens||0);
+      S.usage.cost += i2*pm[0]/1e6 + (it.output_tokens||0)*pm[1]/1e6;
+      if(it.type === 'advisor_message') S.usage.advice++;
+    }
+  } else { const p = PRICES[body.model]; if(p) S.usage.cost += inT*p[0]/1e6 + outT*p[1]/1e6; }
   const srch = u.server_tool_use?.web_search_requests || 0; S.usage.searches += srch; S.usage.cost += srch*0.01;
   save();
   return data;
@@ -761,6 +799,7 @@ function friendlyError(e){
 }
 // Si el modelo no acepta alguna herramienta de internet, se reintenta sin ella.
 function toolProblem(e){ return e.status === 400 && /web_fetch|web_search|tool/i.test(e.message||''); }
+function advisorProblem(e){ return (e.status === 400 && /advisor|beta/i.test(e.message||'')) || e instanceof TypeError; }
 
 let busy = false, useEffort = true;
 async function send(text){
@@ -768,7 +807,7 @@ async function send(text){
   if(!text) text = 'Revisa lo que te adjunto.';
   unlockAudio(); stopSpeaking();
   if(!S.settings.apiKey){ openSheet('ajustes'); toast('Primero pega tu clave de API.'); return; }
-  busy = true; setState('thinking'); turnEvents = [];
+  busy = true; setState('thinking'); turnEvents = []; turnMsgs = []; closing = CLOSE_RE.test(text);
   $('#txt').value = ''; autosize();
   const sent = pending; pending = []; renderAttachBar();
   const names = sent.map(a => a.name);
@@ -782,7 +821,9 @@ async function send(text){
   const system = buildSystem(); // fijo durante todo este turno
   const tools = S.settings.webSearch ? [...TOOLS,
     { type:'web_search_20250305', name:'web_search', max_uses:3, user_location:{ type:'approximate', country:'CL', timezone:'America/Santiago' } },
-    { type:'web_fetch_20260318', name:'web_fetch', max_uses:3, max_content_tokens:30000 }] : TOOLS;
+    { type:'web_fetch_20260318', name:'web_fetch', max_uses:3, max_content_tokens:30000 }] : [...TOOLS];
+  if(S.settings.advisor && !advisorBroken) tools.push({ type:'advisor_20260301', name:'advisor', model:ADVISOR_MODEL, max_uses:1, max_tokens:2048 });
+  const dropAdvisor = () => { const i = tools.findIndex(t => t.type === 'advisor_20260301'); if(i >= 0){ tools.splice(i, 1); advisorBroken = true; return true; } return false; };
   let finalText = '', allText = [];
   try{
     for(let step = 0; step < 16; step++){
@@ -792,7 +833,8 @@ async function send(text){
       try{ data = await callClaude(body); }
       catch(e){
         if(e.status === 400 && useEffort && /output_config|effort/i.test(e.message)){ useEffort = false; step--; continue; }
-        if(toolProblem(e) && body.tools.length > TOOLS.length && step === 0){ tools.splice(TOOLS.length); toast('Internet no disponible en este momento; respondo sin él.'); step--; continue; }
+        if(step === 0 && advisorProblem(e) && dropAdvisor()){ toast('La consulta a Claude Opus no está disponible; respondo yo.'); step--; continue; }
+        if(toolProblem(e) && step === 0 && tools.some(t => /^web_/.test(t.type||''))){ for(let i = tools.length - 1; i >= 0; i--) if(/^web_/.test(tools[i].type||'')) tools.splice(i, 1); toast('Internet no disponible en este momento; respondo sin él.'); step--; continue; }
         throw e;
       }
       msgs.push({ role:'assistant', content:data.content });
@@ -806,7 +848,7 @@ async function send(text){
         msgs.push({ role:'user', content:results });
         continue;
       }
-      if(data.stop_reason === 'pause_turn') continue; // búsqueda web larga: seguir
+      if(data.stop_reason === 'pause_turn') continue; // búsqueda web o consulta al asesor en curso: seguir
       if(data.stop_reason === 'refusal' && !texts) allText.push('Prefiero no ayudar con eso.');
       finalText = texts || allText.join('\n\n');
       break;
@@ -817,10 +859,11 @@ async function send(text){
     while(S.history.length && S.history[0].role !== 'user') S.history.shift();
     save();
     logMsg('a', finalText);
-    showCaption(md(finalText) + eventCards(turnEvents));
+    showCaption(md(finalText) + msgCards(turnMsgs) + eventCards(turnEvents));
     busy = false; setState('idle');
     await speak(finalText);
-    if(S.settings.autoListen && S.settings.voiceOn && SR && state === 'idle') setTimeout(startListening, 300);
+    if(closing){ $('#status').textContent = 'EN ESPERA · HASTA LUEGO'; }
+    else if(S.settings.autoListen && S.settings.voiceOn && SR && state === 'idle') setTimeout(startListening, 300);
   }catch(e){
     busy = false; setState('error');
     const msg = friendlyError(e);
@@ -847,6 +890,20 @@ function eventCards(list){
   if(!list.length) return '';
   const uniq = [...new Map(list.map(e => [e.id, e])).values()].slice(0,6);
   return '<div class="evcards">' + uniq.map(e => `<div class="evcard"><div class="t">${esc(e.titulo)}<span>${esc(dayLabel(parseLocal(e.inicio)))} · ${timeLabel(e)}</span></div><a class="chip" href="${gcalLink(e)}" target="_blank" rel="noopener">+ Google Calendar</a></div>`).join('') + '</div>';
+}
+function msgLink(m){
+  const enc = encodeURIComponent, digits = m.to.replace(/[^\d+]/g,'').replace(/^\+/,'');
+  if(m.canal === 'whatsapp') return `https://wa.me/${digits}?text=${enc(m.cuerpo)}`;
+  if(m.canal === 'sms') return `sms:${m.to ? '+' + digits : ''}&body=${enc(m.cuerpo)}`;
+  return `mailto:${enc(m.to).replace(/%40/g,'@')}?subject=${enc(m.asunto)}&body=${enc(m.cuerpo)}`;
+}
+const CANAL = { correo:['Correo','Abrir en Mail','var(--sky)'], whatsapp:['WhatsApp','Abrir en WhatsApp','var(--tq)'], sms:['Mensaje','Abrir en Mensajes','var(--amb)'] };
+let lastMsgs = [];
+function msgCards(list){
+  lastMsgs = list; if(!list.length) return '';
+  return '<div class="evcards">' + list.map((m,i) => { const c = CANAL[m.canal];
+    return `<div class="evcard msgc" style="border-left-color:${c[2]}"><div class="t"><b style="font-weight:600">${c[0]}${m.nombre ? ' para ' + esc(m.nombre) : ''}${m.to ? ' · ' + esc(m.to) : ''}</b>${m.asunto ? `<span>Asunto: ${esc(m.asunto)}</span>` : ''}<span class="mbody">${esc(m.cuerpo)}</span>
+      <div class="row" style="margin:8px 0 0"><a class="chip" style="--c:${c[2]}" href="${msgLink(m)}" target="_blank" rel="noopener">${c[1]}</a><button class="chip" style="--c:var(--line)" data-copy="${i}">Copiar texto</button></div></div></div>`; }).join('') + '</div>';
 }
 const icsEsc = s => String(s||'').replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\n/g,'\\n');
 function buildICS(events){
@@ -979,20 +1036,20 @@ function renderChat(){
 }
 function renderUsage(){
   const u = S.usage, model = S.settings.model;
-  $('#usageInfo').innerHTML = `Desde ${new Date(u.since).toLocaleDateString('es-CL')}: ${u.inTok.toLocaleString('es-CL')} tokens de entrada y ${u.outTok.toLocaleString('es-CL')} de salida${u.searches?`, ${u.searches} búsquedas`:''}.<br>Gasto estimado: <b style="color:var(--text)">US$ ${u.cost.toFixed(3)}</b>${PRICES[model]?'':' (el estimado solo cuenta Haiku; revisa el gasto real en console.anthropic.com)'}.`;
+  $('#usageInfo').innerHTML = `Desde ${new Date(u.since).toLocaleDateString('es-CL')}: ${u.inTok.toLocaleString('es-CL')} tokens de entrada y ${u.outTok.toLocaleString('es-CL')} de salida${u.searches?`, ${u.searches} búsquedas`:''}${u.advice?`, ${u.advice} consultas a Claude Opus`:''}.<br>Gasto estimado: <b style="color:var(--text)">US$ ${u.cost.toFixed(3)}</b>${PRICES[model]?'':' (el estimado solo cuenta Haiku; revisa el gasto real en console.anthropic.com)'}.`;
 }
 function fillSettings(){
   const s = S.settings;
   $('#sName').value = s.name; $('#sAsst').value = s.asst; $('#sKey').value = s.apiKey; $('#sModel').value = s.model;
   $('#sVoiceOn').checked = s.voiceOn; $('#sAuto').checked = s.autoListen; $('#sRate').value = s.rate; $('#rateVal').textContent = Number(s.rate).toFixed(2);
-  $('#sWeb').checked = s.webSearch; if(voices.length) $('#sVoice').value = s.voiceURI;
+  $('#sWeb').checked = s.webSearch; $('#sAdv').checked = s.advisor; if(voices.length) $('#sVoice').value = s.voiceURI;
   $('#welcome').classList.toggle('hidden', !!s.apiKey);
   renderUsage(); renderAulaInfo();
 }
 function readSettings(){
   const s = S.settings;
   s.name = $('#sName').value.trim(); s.asst = $('#sAsst').value.trim() || 'Jarvis'; s.apiKey = cleanKey($('#sKey').value); $('#sKey').value = s.apiKey; s.model = $('#sModel').value;
-  s.voiceOn = $('#sVoiceOn').checked; s.autoListen = $('#sAuto').checked; s.rate = parseFloat($('#sRate').value) || 1; s.webSearch = $('#sWeb').checked;
+  s.voiceOn = $('#sVoiceOn').checked; s.autoListen = $('#sAuto').checked; s.rate = parseFloat($('#sRate').value) || 1; s.webSearch = $('#sWeb').checked; s.advisor = $('#sAdv').checked;
   if($('#sVoice').value) s.voiceURI = $('#sVoice').value;
   save(); applyBrand();
 }
@@ -1015,6 +1072,7 @@ function closeSheets(){ document.querySelectorAll('.sheet.open').forEach(s => s.
 document.addEventListener('click', e => {
   const t = e.target.closest('button, a'); if(!t) return;
   if(t.dataset.open){ openSheet(t.dataset.open, t.dataset.go); return; }
+  if(t.dataset.copy !== undefined){ const m = lastMsgs[+t.dataset.copy]; if(m){ navigator.clipboard?.writeText((m.asunto ? m.asunto + '\n\n' : '') + m.cuerpo).then(() => toast('Texto copiado.'), () => toast('No pude copiar.')); } return; }
   if(t.dataset.rm !== undefined){ pending.splice(+t.dataset.rm, 1); renderAttachBar(); return; }
   if(t.id === 'togClasses'){ S.settings.showClasses = !S.settings.showClasses; save(); renderAgenda(); return; }
   if(t.hasAttribute('data-close')){ if(t.closest('#sh-ajustes')) readSettings(); closeSheets(); return; }
@@ -1093,6 +1151,7 @@ function greet(){
    ========================================================= */
 let pending = [], afterPickPrompt = '';
 const MAX_IMG = 1600, MAX_FILES = 6;
+function loadLib(src, ready){ return ready() ? Promise.resolve() : new Promise((res, rej) => { const sc = document.createElement('script'); sc.src = src; sc.onload = () => res(); sc.onerror = () => rej(new Error('No pude cargar el lector de documentos.')); document.head.appendChild(sc); }); }
 function readB64(f){ return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = () => rej(r.error); r.readAsDataURL(f); }); }
 async function fileToAttachment(f){
   const name = f.name || 'archivo';
@@ -1112,16 +1171,27 @@ async function fileToAttachment(f){
     if(f.size > 20*1024*1024) throw new Error('El PDF ' + name + ' pesa más de 20 MB.');
     return { kind:'pdf', name, data: await readB64(f) };
   }
+  if(/\.docx$/i.test(name)){
+    await loadLib('lib/mammoth.min.js', () => window.mammoth);
+    const r = await window.mammoth.extractRawText({ arrayBuffer: await f.arrayBuffer() });
+    return { kind:'text', name, text:r.value.slice(0, 120000) };
+  }
+  if(/\.(xlsx|xls|ods)$/i.test(name)){
+    await loadLib('lib/xlsx.min.js', () => window.XLSX);
+    const wb = window.XLSX.read(await f.arrayBuffer(), { type:'array' });
+    const text = wb.SheetNames.map(n => `### Hoja: ${n}\n` + window.XLSX.utils.sheet_to_csv(wb.Sheets[n])).join('\n\n');
+    return { kind:'text', name, text:text.slice(0, 120000) };
+  }
   if(/^text\//.test(f.type) || /\.(txt|csv|md|json)$/i.test(name)){
     if(f.size > 300*1024) throw new Error('El archivo ' + name + ' es muy grande (máx. 300 KB).');
     return { kind:'text', name, text: await f.text() };
   }
-  throw new Error('No puedo leer ese tipo de archivo (' + name + '). Usa fotos, PDF o texto.');
+  throw new Error('No puedo leer ese tipo de archivo (' + name + '). Usa fotos, PDF, Word, Excel o texto.');
 }
 function renderAttachBar(){
   const bar = $('#attachBar');
   bar.classList.toggle('hidden', !pending.length);
-  bar.innerHTML = pending.map((a,i) => `<div class="att">${a.kind === 'image' ? `<img src="${a.thumb}" alt="">` : `<span class="fi">${a.kind === 'pdf' ? 'PDF' : 'TXT'}</span>`}<span class="nm">${esc(a.name)}</span><button data-rm="${i}" aria-label="Quitar">×</button></div>`).join('');
+  bar.innerHTML = pending.map((a,i) => `<div class="att">${a.kind === 'image' ? `<img src="${a.thumb}" alt="">` : `<span class="fi">${a.kind === 'pdf' ? 'PDF' : (a.name.split('.').pop() || 'TXT').slice(0,4).toUpperCase()}</span>`}<span class="nm">${esc(a.name)}</span><button data-rm="${i}" aria-label="Quitar">×</button></div>`).join('');
 }
 $('#fileIn').addEventListener('change', async e => {
   const files = [...e.target.files]; e.target.value = '';
