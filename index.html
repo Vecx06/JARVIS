@@ -232,6 +232,7 @@ label.f{display:block;margin:14px 0 5px;font-size:13px;color:var(--dim)}
       <button class="chip" style="--c:var(--acc)" data-q="Revisa mis evaluaciones y entregas próximas y planifícame bloques de estudio para los próximos días, sin chocar con mis clases ni con lo que ya tengo.">Planificar estudio</button>
       <button class="chip" style="--c:var(--tq)" id="qHorario">Subir mi horario</button>
       <button class="chip" style="--c:var(--amb)" data-q="¿Qué tareas tengo pendientes?">Pendientes</button>
+      <button class="chip" style="--c:var(--pink)" data-q="Pídele al computador que actualice los datos del Aula de Jarvis.">Actualizar Aula</button>
     </div>
   </main>
 
@@ -596,6 +597,11 @@ const TOOLS = [
       nombre:{type:'string', description:'Nombre de la persona, para mostrarlo'},
       asunto:{type:'string', description:'Solo para correo'},
       cuerpo:{type:'string'} }, required:['canal','cuerpo'] } },
+  { name:'pedir_al_computador', description:'Prepara un pedido para el computador del usuario (Claude Code en su PC, que trabaja con archivos y con su navegador Chrome). Úsala cuando la tarea se haga en un computador: crear o editar documentos (Word, PDF, guías de estudio, informes), ordenar archivos, revisar el Aula o páginas donde el usuario tiene sesión iniciada, o actualizar los datos y mejoras de esta app. La app muestra un botón que copia el pedido y abre la sesión del computador; el usuario lo pega y lo envía.',
+    input_schema:{ type:'object', properties:{
+      titulo:{type:'string', description:'Resumen de 3 a 6 palabras, ej. "Guía Certamen 2 MAT070"'},
+      pedido:{type:'string', description:'Instrucciones completas y autosuficientes para el computador, en español: qué hacer, con qué datos (fechas, ramos, materia) y dónde guardar el resultado. Quien lo lea no conoce esta conversación.'} },
+      required:['titulo','pedido'] } },
   { name:'cerrar_conversacion', description:'Llámala cuando el usuario indique que terminó (se despide, dice "eso es todo", "nada más", "gracias, listo", etc.). Detiene la escucha continua del micrófono. Despídete en una frase corta.',
     input_schema:{ type:'object', properties:{} } },
   { name:'memoria_guardar', description:'Guarda un dato duradero sobre el usuario para recordarlo en futuras conversaciones (horario, ramos, gustos, metas, personas importantes, preferencias sobre cómo ayudarle). Un dato por llamada, en una frase corta.',
@@ -610,7 +616,7 @@ function overlaps(ini, fin, skipId){
   return S.events.filter(e => e.id !== skipId && !e.allDay && e.inicio !== e.fin && parseLocal(e.inicio) < b && parseLocal(e.fin) > a).map(e => `${e.titulo} (${e.inicio.slice(11)}–${e.fin.slice(11)})`);
 }
 let turnEvents = []; // eventos creados en esta respuesta, para mostrar botones
-let turnMsgs = [], closing = false;
+let turnMsgs = [], turnPc = [], closing = false;
 const CLOSE_RE = /\b(eso (es|ser[ií]a) todo|nada m[aá]s|eso nom[aá]s|ya est[aá]( bien)?|listo,? gracias|gracias,? (eso es todo|listo|nada m[aá]s)|chao|ch[aá]u|adi[oó]s|hasta (luego|ma[nñ]ana|pronto)|nos vemos|buenas noches|terminamos|ap[aá]gate|descansa|fin de la conversaci[oó]n)\b/i;
 function runTool(name, x){
   switch(name){
@@ -688,6 +694,10 @@ function runTool(name, x){
       return { ok:true, nota:'Se mostró un botón para que el usuario abra la app con el mensaje listo y lo envíe él mismo. No digas que ya se envió.' };
     }
     case 'cerrar_conversacion':{ closing = true; return { ok:true }; }
+    case 'pedir_al_computador':{
+      turnPc.push({ titulo:String(x.titulo||'Pedido para el computador').slice(0,80), pedido:String(x.pedido||'') });
+      return { ok:true, nota:'Se mostró un botón para enviar el pedido al computador. El usuario debe tocarlo y presionar enviar en la sesión del computador. No digas que ya está hecho.' };
+    }
     case 'memoria_guardar':{
       const m = { id:uid('m'), dato:String(x.dato).slice(0,400), fecha:fmtDay(new Date()) };
       S.memory.push(m); save(); renderMemory(); return { ok:true, id:m.id };
@@ -728,6 +738,8 @@ INTERNET: ${st.webSearch ? 'puedes buscar en internet (web_search) y leer págin
 MENSAJES Y CORREOS: no puedes enviarlos tú directamente, pero con preparar_mensaje dejas un correo, WhatsApp o SMS listo para que el usuario lo mande con un toque. Escríbelo en su voz, natural y breve, salvo que pida otro tono. Si el usuario te da el correo o teléfono de alguien, guárdalo con memoria_guardar (ej. "Correo del profe de Física: ...") para la próxima vez.
 
 ASESOR: ${st.advisor ? 'tienes la herramienta "advisor", que consulta a Claude Opus 5.5, un modelo más inteligente. Úsala cuando la pregunta sea difícil (un ejercicio de matemáticas o física, algo que requiere razonar varios pasos, una decisión importante) o cuando no estés seguro de tu respuesta. No la uses para cosas simples (agenda, saludos, datos que ya tienes), porque cuesta más.' : 'desactivado.'}
+
+COMPUTADOR: el usuario tiene un computador siempre prendido con Claude Code (otro asistente, con acceso a sus archivos y a su Chrome con sesiones iniciadas, incluida el Aula USM). Tú no lo controlas, pero con pedir_al_computador le dejas un pedido listo que el usuario envía con un toque. Úsalo para: documentos y guías de estudio, informes, ordenar archivos, cosas del Aula o páginas con sesión iniciada, y para actualizar los datos del Aula de esta app (pedido: "Actualiza los datos del Aula de Jarvis siguiendo docs/actualizar-aula.md del repositorio JARVIS"). Escribe el pedido completo, con todos los datos necesarios, porque el computador no ve esta conversación. Para lo que puedes hacer tú (agenda, tareas, memoria, respuestas, mensajes), hazlo tú.
 
 CIERRE: cuando el usuario se despida o diga que eso es todo, llama a cerrar_conversacion y despídete en una frase.
 
@@ -807,7 +819,7 @@ async function send(text){
   if(!text) text = 'Revisa lo que te adjunto.';
   unlockAudio(); stopSpeaking();
   if(!S.settings.apiKey){ openSheet('ajustes'); toast('Primero pega tu clave de API.'); return; }
-  busy = true; setState('thinking'); turnEvents = []; turnMsgs = []; closing = CLOSE_RE.test(text);
+  busy = true; setState('thinking'); turnEvents = []; turnMsgs = []; turnPc = []; closing = CLOSE_RE.test(text);
   $('#txt').value = ''; autosize();
   const sent = pending; pending = []; renderAttachBar();
   const names = sent.map(a => a.name);
@@ -859,7 +871,7 @@ async function send(text){
     while(S.history.length && S.history[0].role !== 'user') S.history.shift();
     save();
     logMsg('a', finalText);
-    showCaption(md(finalText) + msgCards(turnMsgs) + eventCards(turnEvents));
+    showCaption(md(finalText) + pcCards(turnPc) + msgCards(turnMsgs) + eventCards(turnEvents));
     busy = false; setState('idle');
     await speak(finalText);
     if(closing){ $('#status').textContent = 'EN ESPERA · HASTA LUEGO'; }
@@ -899,6 +911,14 @@ function msgLink(m){
 }
 const CANAL = { correo:['Correo','Abrir en Mail','var(--sky)'], whatsapp:['WhatsApp','Abrir en WhatsApp','var(--tq)'], sms:['Mensaje','Abrir en Mensajes','var(--amb)'] };
 let lastMsgs = [];
+const PC_URL = 'https://claude.ai/code';
+let lastPc = [];
+function pcCards(list){
+  lastPc = list; if(!list.length) return '';
+  return '<div class="evcards">' + list.map((p,i) => `<div class="evcard msgc" style="border-left-color:var(--acc)"><div class="t"><b style="font-weight:600">Para el computador · ${esc(p.titulo)}</b><span class="mbody">${esc(p.pedido)}</span>
+    <div class="row" style="margin:8px 0 0"><button class="chip" style="--c:var(--acc)" data-pc="${i}">Copiar y abrir en el computador</button><button class="chip" style="--c:var(--line)" data-pccopy="${i}">Solo copiar</button></div></div></div>`).join('') + '</div>';
+}
+async function copyText(t){ try{ await navigator.clipboard.writeText(t); return true; }catch(e){ return false; } }
 function msgCards(list){
   lastMsgs = list; if(!list.length) return '';
   return '<div class="evcards">' + list.map((m,i) => { const c = CANAL[m.canal];
@@ -1072,6 +1092,15 @@ function closeSheets(){ document.querySelectorAll('.sheet.open').forEach(s => s.
 document.addEventListener('click', e => {
   const t = e.target.closest('button, a'); if(!t) return;
   if(t.dataset.open){ openSheet(t.dataset.open, t.dataset.go); return; }
+  if(t.dataset.pc !== undefined || t.dataset.pccopy !== undefined){
+    const p = lastPc[+(t.dataset.pc ?? t.dataset.pccopy)]; if(!p) return;
+    const open = t.dataset.pc !== undefined, w = open ? window.open('', '_blank') : null;
+    copyText(p.pedido).then(ok => {
+      if(open){ if(w) w.location.href = PC_URL; else location.href = PC_URL; }
+      toast(ok ? (open ? 'Pedido copiado. En la sesión del computador, mantén el dedo en el cuadro de texto, elige Pegar y envía.' : 'Pedido copiado.') : 'No pude copiar; mantén el dedo sobre el texto para copiarlo.', 6500);
+    });
+    return;
+  }
   if(t.dataset.copy !== undefined){ const m = lastMsgs[+t.dataset.copy]; if(m){ navigator.clipboard?.writeText((m.asunto ? m.asunto + '\n\n' : '') + m.cuerpo).then(() => toast('Texto copiado.'), () => toast('No pude copiar.')); } return; }
   if(t.dataset.rm !== undefined){ pending.splice(+t.dataset.rm, 1); renderAttachBar(); return; }
   if(t.id === 'togClasses'){ S.settings.showClasses = !S.settings.showClasses; save(); renderAgenda(); return; }
