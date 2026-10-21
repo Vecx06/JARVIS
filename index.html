@@ -269,6 +269,9 @@ label.f{display:block;margin:14px 0 5px;font-size:13px;color:var(--dim)}
   <div class="sbody">
     <div id="welcome" class="note hidden" style="font-size:15px;color:var(--text)">Bienvenido. Para activar a tu asistente necesito dos cosas: tu nombre y tu clave de API de Claude. Ambas quedan guardadas solo en este teléfono.</div>
 
+    <div class="sec">CUENTA</div>
+    <div id="acctBox"></div>
+
     <div class="sec">IDENTIDAD</div>
     <label class="f" for="sName">Tu nombre (cómo te llamará)</label>
     <input class="in" id="sName" autocomplete="given-name">
@@ -324,29 +327,139 @@ label.f{display:block;margin:14px 0 5px;font-size:13px;color:var(--dim)}
 <script>
 'use strict';
 /* =========================================================
-   1. ALMACENAMIENTO (todo queda en el teléfono)
+   1. ALMACENAMIENTO Y CUENTAS
+   Cada cuenta (persona) tiene sus propios datos. La clave de Claude y la voz
+   son del dispositivo y se comparten entre las cuentas de ese dispositivo.
    ========================================================= */
-const KEY = 'jarvis.v1';
+const LEGACY_KEY = 'jarvis.v1', DEV_KEY = 'jarvis.device';
+const DEVICE_FIELDS = ['apiKey','model','voiceURI','rate','voiceOn'];
+const profKey = id => 'jarvis.p.' + id;
+function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+function lsSet(k, v){ try{ localStorage.setItem(k, v); return true; }catch(e){ return false; } }
+function loadDevice(){
+  let d = null; try{ d = JSON.parse(lsGet(DEV_KEY) || 'null'); }catch(e){}
+  if(d && Array.isArray(d.profiles) && d.profiles.length) return d;
+  // Primera vez con cuentas: los datos que ya había pasan a la primera cuenta.
+  let legacy = null; try{ legacy = JSON.parse(lsGet(LEGACY_KEY) || 'null'); }catch(e){}
+  const ls = (legacy && legacy.settings) || {};
+  d = { apiKey:ls.apiKey||'', model:ls.model||'claude-haiku-5-5', voiceURI:ls.voiceURI||'', rate:ls.rate||1.0, voiceOn:ls.voiceOn !== false,
+        active:'p1', profiles:[{ id:'p1', name:ls.name||'', usaAula:true, githubToken:'', gistId:'', pin:'' }] };
+  if(legacy) lsSet(profKey('p1'), JSON.stringify(legacy));
+  lsSet(DEV_KEY, JSON.stringify(d));
+  return d;
+}
+let D = loadDevice();
+let P = D.profiles.find(p => p.id === D.active) || D.profiles[0];
+const KEY = profKey(P.id);
+function saveDevice(){ lsSet(DEV_KEY, JSON.stringify(D)); }
 const DEFAULTS = () => ({
-  settings:{ v:3, apiKey:'', name:'', asst:'Jarvis', model:'claude-haiku-5-5', voiceOn:true, autoListen:false, voiceURI:'', rate:1.0, webSearch:true, advisor:true },
+  settings:{ v:3, apiKey:'', name:P.name||'', asst:'Jarvis', model:'claude-haiku-5-5', voiceOn:true, autoListen:false, voiceURI:'', rate:1.0, webSearch:true, advisor:true },
   events:[], tasks:[], memory:[], history:[], log:[], horario:[],
   usage:{ inTok:0, outTok:0, cost:0, searches:0, advice:0, since:new Date().toISOString() },
-  aula:{ version:'', contexto:[], lastSync:null, count:0, icsSync:null, icsCount:0 }
+  aula:{ version:'', contexto:[], lastSync:null, count:0, icsSync:null, icsCount:0 },
+  updatedAt:'', syncedAt:''
 });
-let S = load();
-function load(){
-  try{
-    const raw = localStorage.getItem(KEY);
-    if(!raw) return DEFAULTS();
-    const d = JSON.parse(raw), base = DEFAULTS();
-    const st = { ...base, ...d, settings:{...base.settings, ...(d.settings||{})}, usage:{...base.usage, ...(d.usage||{})}, aula:{...base.aula, ...(d.aula||{})} };
-    if(!(d.settings && d.settings.v >= 2)){ st.settings.webSearch = true; st.settings.v = 2; } // versión 2: internet activado por defecto
-    if(st.settings.v < 3){ st.settings.advisor = true; st.settings.v = 3; } // versión 3: asesor (Claude Opus) activado por defecto
-    return st;
-  }catch(e){ return DEFAULTS(); }
+function normalize(d){
+  const base = DEFAULTS();
+  const st = { ...base, ...d, settings:{...base.settings, ...(d.settings||{})}, usage:{...base.usage, ...(d.usage||{})}, aula:{...base.aula, ...(d.aula||{})} };
+  if(!(d.settings && d.settings.v >= 2)){ st.settings.webSearch = true; st.settings.v = 2; } // versión 2: internet activado por defecto
+  if(st.settings.v < 3){ st.settings.advisor = true; st.settings.v = 3; } // versión 3: asesor (Claude Opus) activado por defecto
+  for(const f of DEVICE_FIELDS) st.settings[f] = D[f] ?? base.settings[f];
+  return st;
 }
-function save(){ try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){ toast('No pude guardar los datos en el teléfono.'); } }
+function load(){ try{ const raw = lsGet(KEY); return normalize(raw ? JSON.parse(raw) : {}); }catch(e){ return normalize({}); } }
+let S = load();
+function persistLocal(){
+  for(const f of DEVICE_FIELDS) D[f] = S.settings[f];
+  if(S.settings.name && S.settings.name !== P.name){ P.name = S.settings.name; }
+  saveDevice();
+  if(!lsSet(KEY, JSON.stringify(S))) toast('No pude guardar los datos en este dispositivo.');
+}
+function save(){ S.updatedAt = new Date().toISOString(); persistLocal(); scheduleSync(); }
 const uid = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+
+/* ---------- Sincronización con GitHub (Gist privado por cuenta) ---------- */
+const GH = 'https://api.github.com', GIST_FILE = 'jarvis.json';
+let syncTimer = null, syncBusy = false, syncState = P.githubToken ? 'pendiente' : 'local', lastSyncAt = null;
+function syncPayload(){
+  const c = JSON.parse(JSON.stringify(S));
+  for(const f of DEVICE_FIELDS) delete c.settings[f];
+  delete c.syncedAt;
+  return c;
+}
+async function gh(path, opt = {}){
+  const r = await fetch(GH + path, { ...opt, cache:'no-store', headers:{ 'Accept':'application/vnd.github+json', 'Authorization':'Bearer ' + P.githubToken, 'X-GitHub-Api-Version':'2022-11-28', ...(opt.body ? { 'Content-Type':'application/json' } : {}) } });
+  if(!r.ok){ const j = await r.json().catch(() => ({})); const e = new Error(j.message || ('HTTP ' + r.status)); e.status = r.status; throw e; }
+  return r.status === 204 ? null : r.json();
+}
+const gistDesc = name => 'Jarvis · datos de ' + (name || 'mi cuenta');
+async function ensureGist(){
+  if(P.gistId) return P.gistId;
+  const list = await gh('/gists?per_page=100');
+  const found = list.find(g => g.description === gistDesc(P.name) && g.files && g.files[GIST_FILE]);
+  if(found){ P.gistId = found.id; saveDevice(); return P.gistId; }
+  if(!S.updatedAt) S.updatedAt = new Date().toISOString();
+  const g = await gh('/gists', { method:'POST', body:JSON.stringify({ description:gistDesc(P.name), public:false,
+    files:{ [GIST_FILE]:{ content:JSON.stringify({ updatedAt:S.updatedAt, data:syncPayload() }) } } }) });
+  P.gistId = g.id; S.syncedAt = S.updatedAt; saveDevice(); persistLocal();
+  return P.gistId;
+}
+async function readRemote(){
+  const g = await gh('/gists/' + P.gistId);
+  const f = g.files && g.files[GIST_FILE]; if(!f) return null;
+  const text = f.truncated ? await (await fetch(f.raw_url, { cache:'no-store' })).text() : f.content;
+  try{ return JSON.parse(text); }catch(e){ return null; }
+}
+function unionById(a = [], b = []){ const m = new Map(); for(const x of b) m.set(x.id, x); for(const x of a) m.set(x.id, x); return [...m.values()]; }
+function applyRemote(remote, merge){
+  const r = normalize(remote.data || {});
+  if(merge){
+    // Hubo cambios en los dos lados: se juntan agenda, tareas y memoria (gana lo de este dispositivo si se repite).
+    // Los datos del Aula y del horario se toman completos del lado más nuevo, para no duplicarlos.
+    const aulaSide = (S.aula.version || '') > (r.aula.version || '') ? S : r, horSide = (S.horario||[]).length ? S : r;
+    const own = l => l.filter(e => e.origen !== 'aula' && e.origen !== 'horario');
+    r.events = unionById(own(S.events), own(r.events)).concat(aulaSide.events.filter(e => e.origen === 'aula'), horSide.events.filter(e => e.origen === 'horario'));
+    r.tasks = unionById(S.tasks.filter(t => t.origen !== 'aula'), r.tasks.filter(t => t.origen !== 'aula')).concat(aulaSide.tasks.filter(t => t.origen === 'aula'));
+    r.memory = unionById(S.memory, r.memory); r.aula = aulaSide.aula; r.horario = horSide.horario;
+    const lastT = l => (l && l.length ? l[l.length-1].t || '' : '');
+    if(lastT(S.log) > lastT(r.log)){ r.log = S.log; r.history = S.history; }
+  }
+  r.updatedAt = merge ? new Date().toISOString() : remote.updatedAt; r.syncedAt = merge ? '' : remote.updatedAt;
+  S = r; sortEvents(); persistLocal(); refreshAll();
+}
+async function syncNow(manual){
+  if(!P.githubToken || syncBusy || !navigator.onLine) return;
+  if(busy){ scheduleSync(); return; }
+  syncBusy = true; setSync('sincronizando');
+  try{
+    await ensureGist();
+    const remote = await readRemote();
+    const dirty = (S.updatedAt || '') > (S.syncedAt || '');
+    if(remote && (remote.updatedAt || '') > (S.syncedAt || '')){
+      applyRemote(remote, dirty);
+    }
+    if((S.updatedAt || '') > (S.syncedAt || '')){
+      await gh('/gists/' + P.gistId, { method:'PATCH', body:JSON.stringify({ files:{ [GIST_FILE]:{ content:JSON.stringify({ updatedAt:S.updatedAt, data:syncPayload() }) } } }) });
+      S.syncedAt = S.updatedAt; persistLocal();
+    }
+    lastSyncAt = new Date(); setSync('ok');
+    if(manual) toast('Sincronizado.');
+  }catch(e){
+    setSync('error');
+    if(e.status === 401) toast('GitHub rechazó el token de sincronización. Revísalo en Ajustes → Cuenta.', 6000);
+    else if(e.status === 404 && P.gistId){ P.gistId = ''; saveDevice(); toast('No encontré los datos en GitHub; los vuelvo a crear.', 5000); }
+    else if(manual) toast('No pude sincronizar: ' + e.message, 6000);
+  }finally{ syncBusy = false; }
+}
+function scheduleSync(){ if(!P.githubToken) return; setSync('pendiente'); clearTimeout(syncTimer); syncTimer = setTimeout(() => syncNow(false), 2500); }
+function setSync(s){ syncState = s; if(typeof tickClock === 'function') tickClock(); }
+function syncLabel(){
+  return { local:'Solo en este dispositivo', pendiente:'Cambios por sincronizar', sincronizando:'Sincronizando…', ok:'Sincronizado' + (lastSyncAt ? ' ' + hhmm(lastSyncAt) : ''), error:'Error de sincronización' }[syncState] || '';
+}
+function refreshAll(){
+  try{ applyBrand(); renderHud(); greet(); if($('#sh-datos').classList.contains('open')){ renderAgenda(); renderTasks(); renderMemory(); } if($('#sh-chat').classList.contains('open')) renderChat(); }catch(e){}
+}
+async function sha(t){ const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(t)); return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2,'0')).join(''); }
 
 /* =========================================================
    2. UTILIDADES DE FECHA Y TEXTO
@@ -387,7 +500,7 @@ function setState(s){ state = s; $('#status').textContent = STATUS[s]; $('#statu
 let toastT;
 function toast(msg, ms=3200){ const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(()=>t.classList.remove('show'), ms); }
 function tickClock(){ const d = new Date(); $('#clock').textContent = d.toLocaleDateString('es-CL',{weekday:'short', day:'numeric', month:'short'}).replace(/\./g,'').toUpperCase() + ' · ' + hhmm(d);
-  const on = navigator.onLine !== false; $('#sysbar').classList.toggle('off', !on); $('#sysline').textContent = on ? 'En línea' : 'Sin conexión'; }
+  const on = navigator.onLine !== false; $('#sysbar').classList.toggle('off', !on); $('#sysline').textContent = on ? (P.githubToken ? syncLabel() : 'En línea') : 'Sin conexión'; }
 setInterval(tickClock, 15000); tickClock(); window.addEventListener('online', tickClock); window.addEventListener('offline', tickClock);
 function showCaption(html, tag){ const c = $('#caption'); c.innerHTML = html; c.parentElement.scrollTop = 0; c.scrollTop = 0;
   $('#capTag').textContent = tag || (S.settings.asst || 'Jarvis').toUpperCase(); $('#capTime').textContent = hhmm(new Date()); }
@@ -723,7 +836,7 @@ function buildSystem(){
   const hor = (S.horario||[]).map(c => `- ${c.dia} ${c.inicio}–${c.fin} · ${c.ramo}${c.tipo_clase?' ('+c.tipo_clase+')':''}${c.sala?' · sala '+c.sala:''}`).join('\n') || '(todavía no lo ha cargado; si lo necesitas, pídele una foto de su horario con el botón del clip o "Subir mi horario")';
   const tk = S.tasks.filter(t => !t.hecha).map(t => `- [${t.id}] ${t.titulo}${t.fecha?' · límite '+t.fecha:''} · prioridad ${t.prioridad}${t.notas?' — '+t.notas.slice(0,120):''}`).join('\n') || '(sin tareas pendientes)';
   const mem = S.memory.map(m => `- [${m.id}] ${m.dato}`).join('\n') || '(todavía no sabes nada guardado sobre el usuario)';
-  return `Eres ${st.asst||'Jarvis'}, el asistente personal de ${st.name||'el usuario'}. Le ayudas con todo: estudios (es estudiante universitario), horario, tareas, recordatorios, planificación, ideas, redacción de mensajes, dudas y su vida personal en general.
+  return `Eres ${st.asst||'Jarvis'}, el asistente personal de ${st.name||'el usuario'}. Le ayudas con todo: ${P.usaAula ? 'estudios (es estudiante universitario), ' : ''}horario, tareas, recordatorios, planificación, ideas, redacción de mensajes, dudas y su vida personal en general.
 
 PERSONALIDAD: sereno, eficiente y leal, con un humor seco y elegante muy ocasional. Hablas español natural (puedes usar expresiones chilenas suaves), con respeto pero cercano. Llámalo por su nombre de vez en cuando.
 
@@ -739,15 +852,15 @@ MENSAJES Y CORREOS: no puedes enviarlos tú directamente, pero con preparar_mens
 
 ASESOR: ${st.advisor ? 'tienes la herramienta "advisor", que consulta a Claude Opus 5.5, un modelo más inteligente. Úsala cuando la pregunta sea difícil (un ejercicio de matemáticas o física, algo que requiere razonar varios pasos, una decisión importante) o cuando no estés seguro de tu respuesta. No la uses para cosas simples (agenda, saludos, datos que ya tienes), porque cuesta más.' : 'desactivado.'}
 
-COMPUTADOR: el usuario tiene un computador siempre prendido con Claude Code (otro asistente, con acceso a sus archivos y a su Chrome con sesiones iniciadas, incluida el Aula USM). Tú no lo controlas, pero con pedir_al_computador le dejas un pedido listo que el usuario envía con un toque. Úsalo para: documentos y guías de estudio, informes, ordenar archivos, cosas del Aula o páginas con sesión iniciada, y para actualizar los datos del Aula de esta app (pedido: "Actualiza los datos del Aula de Jarvis siguiendo docs/actualizar-aula.md del repositorio JARVIS"). Escribe el pedido completo, con todos los datos necesarios, porque el computador no ve esta conversación. Para lo que puedes hacer tú (agenda, tareas, memoria, respuestas, mensajes), hazlo tú.
+${P.usaAula ? `COMPUTADOR: el usuario tiene un computador siempre prendido con Claude Code (otro asistente, con acceso a sus archivos y a su Chrome con sesiones iniciadas, incluida el Aula USM). Tú no lo controlas, pero con pedir_al_computador le dejas un pedido listo que el usuario envía con un toque. Úsalo para: documentos y guías de estudio, informes, ordenar archivos, cosas del Aula o páginas con sesión iniciada, y para actualizar los datos del Aula de esta app (pedido: "Actualiza los datos del Aula de Jarvis siguiendo docs/actualizar-aula.md del repositorio JARVIS"). Escribe el pedido completo, con todos los datos necesarios, porque el computador no ve esta conversación. Para lo que puedes hacer tú (agenda, tareas, memoria, respuestas, mensajes), hazlo tú.
 
-CIERRE: cuando el usuario se despida o diga que eso es todo, llama a cerrar_conversacion y despídete en una frase.
+` : ''}CIERRE: cuando el usuario se despida o diga que eso es todo, llama a cerrar_conversacion y despídete en una frase.
 
 ADJUNTOS: el usuario puede mandarte fotos, PDF o archivos de texto. Léelos con atención. Si es su horario de clases, usa horario_cargar con TODAS las clases (no inventes las que no se lean; si algo es ilegible, pregunta). Después, usa el horario para darle hora a las evaluaciones que dicen "hora por confirmar" cuando el horario lo permita (con agenda_modificar), y cuéntale qué hiciste en 2 o 3 frases.
 
-AULA: los eventos y tareas "del Aula" ya fueron extraídos del Aula USM (calendario y cronogramas oficiales) y se actualizan solos. Tú no puedes entrar al Aula (requiere la cuenta USM del usuario). Si el usuario pregunta por algo del Aula que no está en tus datos, díselo y pídele que te pegue el enlace o el texto.
+${P.usaAula ? `AULA: los eventos y tareas "del Aula" ya fueron extraídos del Aula USM (calendario y cronogramas oficiales) y se actualizan solos. Tú no puedes entrar al Aula (requiere la cuenta USM del usuario). Si el usuario pregunta por algo del Aula que no está en tus datos, díselo y pídele que te pegue el enlace o el texto.
 
-LÍMITES: no puedes enviar correos ni mensajes por tu cuenta (solo dejarlos listos), llamar, ni controlar el computador del usuario; tampoco puedes avisarle a una hora exacta si la app está cerrada (los recordatorios se ven al abrir la app o pasándolos al calendario del teléfono con el botón que aparece bajo cada evento). Si algo está fuera de tu alcance, dilo y ofrece la mejor alternativa.
+` : ''}LÍMITES: no puedes enviar correos ni mensajes por tu cuenta (solo dejarlos listos), llamar, ni controlar el computador del usuario; tampoco puedes avisarle a una hora exacta si la app está cerrada (los recordatorios se ven al abrir la app o pasándolos al calendario del teléfono con el botón que aparece bajo cada evento). Si algo está fuera de tu alcance, dilo y ofrece la mejor alternativa.
 
 AHORA: ${now.toLocaleString('es-CL',{dateStyle:'full', timeStyle:'short'})} (zona horaria ${tz}). Usa este formato para fechas en herramientas: YYYY-MM-DDTHH:MM, hora local.
 
@@ -762,10 +875,10 @@ ${tk}
 
 EVALUACIONES MÁS ADELANTE (después de 14 días):
 ${evals}
-
+${P.usaAula ? `
 CONTEXTO ACADÉMICO (del Aula):
 ${ctx}
-
+` : ''}
 HORARIO SEMANAL DE CLASES:
 ${hor}`;
 }
@@ -831,9 +944,10 @@ async function send(text){
   const msgs = S.history.map(h => ({ role:h.role, content:h.content }));
   pending = sent; msgs.push({ role:'user', content:buildUserContent(text) }); pending = [];
   const system = buildSystem(); // fijo durante todo este turno
-  const tools = S.settings.webSearch ? [...TOOLS,
+  const baseTools = P.usaAula ? TOOLS : TOOLS.filter(t => t.name !== 'pedir_al_computador');
+  const tools = S.settings.webSearch ? [...baseTools,
     { type:'web_search_20250305', name:'web_search', max_uses:3, user_location:{ type:'approximate', country:'CL', timezone:'America/Santiago' } },
-    { type:'web_fetch_20260318', name:'web_fetch', max_uses:3, max_content_tokens:30000 }] : [...TOOLS];
+    { type:'web_fetch_20260318', name:'web_fetch', max_uses:3, max_content_tokens:30000 }] : [...baseTools];
   if(S.settings.advisor && !advisorBroken) tools.push({ type:'advisor_20260301', name:'advisor', model:ADVISOR_MODEL, max_uses:1, max_tokens:2048 });
   const dropAdvisor = () => { const i = tools.findIndex(t => t.type === 'advisor_20260301'); if(i >= 0){ tools.splice(i, 1); advisorBroken = true; return true; } return false; };
   let finalText = '', allText = [];
@@ -1064,7 +1178,7 @@ function fillSettings(){
   $('#sVoiceOn').checked = s.voiceOn; $('#sAuto').checked = s.autoListen; $('#sRate').value = s.rate; $('#rateVal').textContent = Number(s.rate).toFixed(2);
   $('#sWeb').checked = s.webSearch; $('#sAdv').checked = s.advisor; if(voices.length) $('#sVoice').value = s.voiceURI;
   $('#welcome').classList.toggle('hidden', !!s.apiKey);
-  renderUsage(); renderAulaInfo();
+  renderUsage(); renderAulaInfo(); renderAccount();
 }
 function readSettings(){
   const s = S.settings;
@@ -1073,7 +1187,7 @@ function readSettings(){
   if($('#sVoice').value) s.voiceURI = $('#sVoice').value;
   save(); applyBrand();
 }
-function applyBrand(){ $('#brand').textContent = (S.settings.asst||'Jarvis').toUpperCase(); $('#brandKick').textContent = S.settings.name ? 'Sistema personal · ' + S.settings.name : 'Sistema personal · USM'; }
+function applyBrand(){ $('#brand').textContent = (S.settings.asst||'Jarvis').toUpperCase(); $('#brandKick').textContent = 'Sistema personal · ' + (S.settings.name || P.name || (P.usaAula ? 'USM' : 'Jarvis')); }
 function goTab(name){
   document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('act', b.dataset.tab === name));
   ['agenda','tareas','memoria'].forEach(n => $('#tab-'+n).classList.toggle('hidden', n !== name));
@@ -1169,7 +1283,7 @@ function greet(){
   if(S.settings.apiKey){
     const ev = S.events.find(e => e.tipo === 'evaluacion' && parseLocal(e.fin) >= new Date());
     if(ev) line += `<br>Lo más urgente: <b>${esc(ev.titulo)}</b>, ${esc(dayLabel(parseLocal(ev.inicio)))}.`;
-    if(!(S.horario||[]).length) line += '<br><span style="color:var(--muted)">Consejo: toca <b>Subir mi horario</b> y mándame una foto de tu horario para organizar todo con tus horas reales.</span>';
+    if(P.usaAula && !(S.horario||[]).length) line += '<br><span style="color:var(--muted)">Consejo: toca <b>Subir mi horario</b> y mándame una foto de tu horario para organizar todo con tus horas reales.</span>';
     else line += '<br><span style="color:var(--muted)">Toca el núcleo o el micrófono para hablarme, o el clip para mandarme una foto.</span>';
   } else line += '<br><span style="color:var(--muted)">Abre Ajustes para configurarme.</span>';
   showCaption(line);
@@ -1282,7 +1396,9 @@ function bootSequence(){
   const lines = [
     ['Núcleo', 'OK'],
     ['Memoria', `${S.memory.length} datos`],
-    ['Aula USM', evals ? `${evals} registros` : 'sincronizando'],
+    ['Cuenta', P.name || 'sin nombre'],
+    ['Sincronización', P.githubToken ? 'GitHub' : 'solo este equipo', !P.githubToken && D.profiles.length > 1],
+    ...(P.usaAula ? [['Aula USM', evals ? `${evals} registros` : 'sincronizando']] : []),
     ['Horario', (S.horario||[]).length ? `${S.horario.length} bloques` : 'pendiente', !(S.horario||[]).length],
     ['Voz', SR ? 'lista' : 'teclado', !SR],
     ['Enlace con Claude', S.settings.apiKey ? 'OK' : 'sin clave', !S.settings.apiKey]
@@ -1293,7 +1409,81 @@ function bootSequence(){
   boot.addEventListener('click', finish);
 }
 
-applyBrand(); sizeCanvas(); requestAnimationFrame(draw); greet(); loadAulaData(false); bootSequence();
+
+/* =========================================================
+   15. CUENTAS: cambiar, agregar, PIN y sincronización
+   ========================================================= */
+function renderAccount(){
+  const box = $('#acctBox'); if(!box) return;
+  const others = D.profiles.filter(p => p.id !== P.id);
+  box.innerHTML = `
+    <div class="item t-personal"><div class="body">${esc(S.settings.name || P.name || 'Sin nombre')}<small>${P.usaAula ? 'Con datos del Aula USM · ' : ''}${esc(P.githubToken ? syncLabel() : 'Solo en este dispositivo')}${P.pin ? ' · con PIN' : ''}${P.gistId ? '<br>Código de cuenta: <span style="font-family:var(--f-mono)">' + esc(P.gistId) + '</span>' : ''}</small></div></div>
+    ${others.length ? `<div class="row" style="flex-wrap:wrap">${others.map(p => `<button class="btn grow" data-switch="${p.id}">Cambiar a ${esc(p.name || 'otra cuenta')}${p.pin ? ' (PIN)' : ''}</button>`).join('')}</div>` : ''}
+    <label class="f" for="acTok">Sincronizar entre dispositivos: token de GitHub</label>
+    <div class="row" style="margin:0"><input class="in" id="acTok" type="password" placeholder="github_pat_…" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(P.githubToken)}"><button class="btn" id="acTokSave">Conectar</button></div>
+    <p class="note">Con el token, esta cuenta guarda sus datos en un archivo secreto (Gist privado) de GitHub y los ve igual en todos sus dispositivos. <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">Crear token</a>: en "Account permissions", dale a <b>Gists</b> el acceso "Read and write". La clave de Claude no se sube nunca.</p>
+    <div class="row"><button class="btn grow" id="acSync"${P.githubToken ? '' : ' disabled'}>Sincronizar ahora</button><button class="btn ghost grow" id="acPin">${P.pin ? 'Quitar PIN' : 'Poner PIN'}</button></div>
+    <div class="row"><button class="btn ghost grow" id="acAdd">Agregar otra cuenta</button>${others.length ? '<button class="btn danger" id="acDel">Quitar esta cuenta</button>' : ''}</div>
+    <div id="acForm" class="hidden" style="border:1px solid var(--line2);border-radius:12px;padding:4px 12px 12px;margin-top:6px">
+      <label class="f" for="nfName">Nombre de la persona</label><input class="in" id="nfName" autocomplete="off">
+      <label class="f" for="nfTok">Su token de GitHub (opcional)</label><input class="in" id="nfTok" type="password" placeholder="github_pat_…" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <label class="f" for="nfCode">Código de cuenta (opcional, si ya la usa en otro dispositivo)</label><input class="in" id="nfCode" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <div class="sw"><div>Usar los datos del Aula USM<small>Solo para quien cursa los ramos de este Aula.</small></div><input type="checkbox" id="nfAula"></div>
+      <div class="row"><button class="btn solid grow" id="nfCreate">Crear cuenta y entrar</button></div>
+    </div>`;
+}
+async function flushSync(){ if(P.githubToken && (S.updatedAt || '') > (S.syncedAt || '')){ clearTimeout(syncTimer); await syncNow(false); } }
+async function switchTo(id){
+  const t = D.profiles.find(p => p.id === id); if(!t) return;
+  if(t.pin){ const v = prompt('PIN de ' + (t.name || 'la cuenta')); if(v === null) return; if(await sha('jarvis:' + v) !== t.pin){ toast('PIN incorrecto.'); return; } sessionStorage.setItem('jarvis.unlocked', t.id); }
+  await flushSync(); D.active = id; saveDevice(); location.reload();
+}
+$('#sh-ajustes').addEventListener('click', async e => {
+  const t = e.target.closest('button'); if(!t || !t.closest('#acctBox')) return;
+  if(t.dataset.switch){ readSettings(); switchTo(t.dataset.switch); return; }
+  if(t.id === 'acTokSave'){ P.githubToken = cleanKey($('#acTok').value); saveDevice(); renderAccount(); if(P.githubToken){ await syncNow(true); renderAccount(); } else { setSync('local'); toast('Sincronización desactivada en este dispositivo.'); } return; }
+  if(t.id === 'acSync'){ await syncNow(true); renderAccount(); return; }
+  if(t.id === 'acPin'){
+    if(P.pin){ P.pin = ''; saveDevice(); toast('PIN quitado.'); renderAccount(); return; }
+    const v = prompt('Elige un PIN de 4 a 8 números para esta cuenta'); if(v === null) return;
+    if(!/^\d{4,8}$/.test(v)){ toast('El PIN debe tener entre 4 y 8 números.'); return; }
+    P.pin = await sha('jarvis:' + v); saveDevice(); sessionStorage.setItem('jarvis.unlocked', P.id); toast('PIN guardado. Se pedirá al abrir esta cuenta.'); renderAccount(); return;
+  }
+  if(t.id === 'acAdd'){ $('#acForm').classList.toggle('hidden'); $('#nfName').focus(); return; }
+  if(t.id === 'acDel'){
+    const msg = P.githubToken ? `¿Quitar la cuenta de ${P.name || 'esta persona'} de este dispositivo? Sus datos siguen guardados en GitHub.` : `¿Quitar la cuenta de ${P.name || 'esta persona'}? No está sincronizada, así que sus datos se borran para siempre.`;
+    if(!confirm(msg)) return;
+    await flushSync();
+    try{ localStorage.removeItem(KEY); }catch(err){}
+    D.profiles = D.profiles.filter(p => p.id !== P.id); D.active = D.profiles[0].id; saveDevice(); location.reload(); return;
+  }
+  if(t.id === 'nfCreate'){
+    const name = $('#nfName').value.trim(); if(!name){ toast('Escribe el nombre de la persona.'); return; }
+    const np = { id:uid('p'), name, usaAula:$('#nfAula').checked, githubToken:cleanKey($('#nfTok').value), gistId:$('#nfCode').value.trim().replace(/[^a-f0-9]/gi,''), pin:'' };
+    readSettings(); await flushSync();
+    D.profiles.push(np); D.active = np.id; saveDevice(); sessionStorage.setItem('jarvis.unlocked', np.id); location.reload();
+  }
+});
+function lockScreen(){
+  const others = D.profiles.filter(p => p.id !== P.id);
+  const el = document.createElement('div'); el.id = 'lock';
+  el.style.cssText = 'position:fixed;inset:0;z-index:120;background:var(--bg);display:grid;place-items:center;padding:24px';
+  el.innerHTML = `<div style="width:min(84vw,340px);text-align:center"><div class="bkick">Cuenta protegida</div><div class="bname" style="font-size:34px;margin:8px 0 18px">${esc((P.name || 'JARVIS').toUpperCase())}</div>
+    <input class="in" id="lkPin" type="password" inputmode="numeric" placeholder="PIN" style="text-align:center;font-size:22px;letter-spacing:.3em">
+    <div class="row"><button class="btn solid grow" id="lkGo">Entrar</button></div>
+    ${others.map(p => `<div class="row"><button class="btn ghost grow" data-lk="${p.id}">Entrar como ${esc(p.name || 'otra cuenta')}</button></div>`).join('')}</div>`;
+  document.body.appendChild(el);
+  const go = async () => { if(await sha('jarvis:' + $('#lkPin').value) === P.pin){ sessionStorage.setItem('jarvis.unlocked', P.id); el.remove(); } else { toast('PIN incorrecto.'); $('#lkPin').value = ''; } };
+  $('#lkGo').addEventListener('click', go);
+  $('#lkPin').addEventListener('keydown', e => { if(e.key === 'Enter') go(); });
+  el.addEventListener('click', e => { const b = e.target.closest('[data-lk]'); if(b) switchTo(b.dataset.lk); });
+}
+if(!P.usaAula){ const qa = document.querySelector('[data-q*="Aula de Jarvis"]'); if(qa) qa.remove(); }
+if(P.pin && sessionStorage.getItem('jarvis.unlocked') !== P.id) lockScreen();
+document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible') syncNow(false); else flushSync(); });
+setInterval(() => { if(document.visibilityState === 'visible') syncNow(false); }, 60000);
+
+applyBrand(); sizeCanvas(); requestAnimationFrame(draw); greet(); if(P.usaAula) loadAulaData(false); bootSequence(); syncNow(false);
 if(!S.settings.apiKey) setTimeout(() => openSheet('ajustes'), 1900);
 </script>
 </body>

@@ -12,6 +12,11 @@ Este repositorio es la app **Jarvis** de Victor: un asistente personal en el iPh
 - `lib/`: lectores de Word (mammoth) y Excel (SheetJS) que la app carga al adjuntar esos archivos.
 - `docs/actualizar-aula.md`: el procedimiento para actualizar `aula.json`.
 
+Jarvis tiene **cuentas** (una por persona: Victor y su pareja). Los datos de cada cuenta viven en el
+navegador y, si la cuenta tiene un token de GitHub, se sincronizan en un Gist privado de esa persona
+(`Jarvis · datos de <nombre>`, archivo `jarvis.json`). `aula.json` solo se aplica a la cuenta que tiene
+activado "Usar los datos del Aula USM". Nunca subas datos de una cuenta a este repositorio.
+
 ## Reglas
 
 - Victor es estudiante de primer año; explícale lo que hiciste paso a paso y en español.
